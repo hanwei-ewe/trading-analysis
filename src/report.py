@@ -12,7 +12,8 @@ def to_markdown(result):
         f"## {symbol} — {timeframe} — {generated}",
         "",
         f"**Bias:** {result['bias']}",
-        f"**Confidence:** {result['confidence']} (score {result['score']:+d})",
+        f"**Confidence:** {result['confidence']} "
+        f"(score {result['score']:+d} of {result.get('max_score', 0)})",
         f"**Price:** {_money(result['price'])}",
         "",
     ]
@@ -54,6 +55,17 @@ def to_markdown(result):
         f"({volume['volume']:.0f} vs MA {volume['volume_ma']:.0f})",
         "",
     ]
+
+    inp = result.get("inputs")
+    if inp:
+        active = inp.get("active_checks") or []
+        lines += [
+            "### Inputs",
+            f"- Timeframe: {inp.get('timeframe')}",
+            f"- Active checks: {', '.join(active) if active else 'none'}",
+            f"- Parameters: {inp.get('indicators', {})}",
+            "",
+        ]
 
     ex = result.get("explanations")
     if ex:

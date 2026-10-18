@@ -1,6 +1,6 @@
 # PLAN.md — Roadmap
 
-_Version 1.8 — 2026-10-18._
+_Version 1.9 — 2026-10-18._
 _Companion to RULES.md (constraints) and DESIGN.md (architecture)._
 
 ## Phase 1 — Analysis + Foundations (current)
@@ -37,6 +37,10 @@ Milestones:
 - [x] Parameter review & guidance: deterministic error/warning/tip checks for
       inconsistent or inconsistent-with-each-other settings, plus a "how to
       choose" guide in the UI (see DESIGN.md §10).
+- [x] Phase-1 polish: timeframe-aware proposal text; report `Inputs` section and
+      `score of N`; journal records effective inputs (timeframe, active checks,
+      parameters) for reproducibility; test runner + engine/parameter tests
+      (`tests/run.py`).
 
 ## Phase 2 — Strategy Framework + Backtesting
 

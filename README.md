@@ -90,7 +90,7 @@ tests/   indicator tests
 ## Tests
 
 ```bash
-./dev.sh python tests/test_indicators.py
+./dev.sh python tests/run.py
 ```
 
 ## Disclaimer

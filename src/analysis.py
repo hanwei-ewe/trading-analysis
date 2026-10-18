@@ -21,7 +21,7 @@ def _nearest_below(levels, price):
     return float(candidates.max()) if len(candidates) else None
 
 
-def _build_signal(direction, price, atr_v, support, resistance, cfg):
+def _build_signal(direction, price, atr_v, support, resistance, cfg, timeframe="1h"):
     min_rr = float(cfg["risk"]["min_rr"])
 
     if direction == "LONG":
@@ -33,7 +33,7 @@ def _build_signal(direction, price, atr_v, support, resistance, cfg):
         risk = mid - stop
         t1 = mid + 2.0 * risk
         t2 = mid + 3.0 * risk
-        invalidation = f"1h close below {stop:,.2f}"
+        invalidation = f"{timeframe} close below {stop:,.2f}"
     else:
         anchor = min(resistance, price + 0.5 * atr_v)
         entry_low = anchor - 0.25 * atr_v
@@ -43,7 +43,7 @@ def _build_signal(direction, price, atr_v, support, resistance, cfg):
         risk = stop - mid
         t1 = mid - 2.0 * risk
         t2 = mid - 3.0 * risk
-        invalidation = f"1h close above {stop:,.2f}"
+        invalidation = f"{timeframe} close above {stop:,.2f}"
 
     if risk <= 0:
         return None
@@ -64,9 +64,10 @@ def _build_signal(direction, price, atr_v, support, resistance, cfg):
     }
 
 
-def analyze(df, cfg, ind=None, active=None):
+def analyze(df, cfg, ind=None, active=None, timeframe=None):
     if ind is None:
         ind = add_indicators(df, cfg)
+    tf = timeframe or cfg["timeframes"]["primary"]
     min_history = int(cfg["indicators"]["ema"][-1]) + 5
     if len(ind) < min_history:
         raise ValueError(f"need >= {min_history} candles, got {len(ind)}")
@@ -278,7 +279,7 @@ def analyze(df, cfg, ind=None, active=None):
 
     signal = None
     if bias in ("LONG", "SHORT"):
-        signal = _build_signal(bias, price, atr_v, support, resistance, cfg)
+        signal = _build_signal(bias, price, atr_v, support, resistance, cfg, tf)
         if signal is None:
             bias = "NEUTRAL-FLAT"
             confidence = "Low"
@@ -289,6 +290,7 @@ def analyze(df, cfg, ind=None, active=None):
         "confidence": confidence,
         "score": score,
         "max_score": n_checks,
+        "active": [c["id"] for c in checks],
         "checks": checks,
         "regime": {
             "state": regime,

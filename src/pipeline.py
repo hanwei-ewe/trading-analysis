@@ -329,9 +329,14 @@ def run_analysis(config_path=None, timeframe=None, do_journal=True, selected=Non
     df = data_mod.drop_incomplete(df, tf)
 
     ind_df = ind_mod.add_indicators(df, cfg)
-    result = analyze(df, cfg, ind=ind_df, active=active)
+    result = analyze(df, cfg, ind=ind_df, active=active, timeframe=tf)
     result["symbol"] = symbol
     result["timeframe"] = tf
+    result["inputs"] = {
+        "timeframe": tf,
+        "indicators": cfg["indicators"],
+        "active_checks": result.get("active"),
+    }
     result["data_as_of"] = df.index[-1].isoformat()
     result["generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     result["explanations"] = explain(
@@ -356,7 +361,7 @@ def get_explanations(config_path=None, timeframe=None, selected=None, params=Non
     tf = _resolve_timeframe(cfg, timeframe)
     df = data_mod.drop_incomplete(_load_df(cfg, tf), tf)
     ind_df = ind_mod.add_indicators(df, cfg)
-    result = analyze(df, cfg, ind=ind_df, active=active)
+    result = analyze(df, cfg, ind=ind_df, active=active, timeframe=tf)
     return {
         "symbol": symbol,
         "timeframe": tf,
