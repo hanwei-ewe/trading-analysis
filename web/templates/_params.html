@@ -1,0 +1,43 @@
+<div class="param-review">
+  <div class="param-head">
+    <h3>Parameter check</h3>
+    {% if review.errors %}
+    <span class="pf-badge pf-error">{{ review.errors }} error{{ 's' if review.errors != 1 else '' }}</span>
+    {% elif review.warnings %}
+    <span class="pf-badge pf-warning">{{ review.warnings }} warning{{ 's' if review.warnings != 1 else '' }}</span>
+    {% else %}
+    <span class="pf-badge pf-ok">no issues</span>
+    {% endif %}
+  </div>
+
+  {% if review.findings %}
+  <ul class="param-findings">
+    {% for f in review.findings %}
+    <li class="pf pf-{{ f.level }}">
+      <b>{{ f.scope }}</b> — {{ f.message }}
+      {% if f.hint %}<span class="muted">{{ f.hint }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Your combinations look conventional for {{ review.timeframe }}.</p>
+  {% endif %}
+
+  <details class="param-guide">
+    <summary>How to choose parameters</summary>
+    <div class="guide">
+      <p><b>Rule of thumb — faster vs slower.</b> Keep each indicator faster than the trend it confirms, and each "fast" line shorter than its own "slow" line.</p>
+      <ul>
+        <li><b>EMA</b> — trend anchor; slow is fine here. 20/50/200 (faster style: 9/21/50). These set direction.</li>
+        <li><b>MACD = two EMAs</b> (fast/slow) plus a signal. Keep them <i>below</i> your trend EMAs so momentum leads — e.g. 12/26/9 against EMA 20/50/200. If MACD slow ≥ your EMA period, the two signals duplicate.</li>
+        <li><b>RSI</b> — momentum, 0–100. Typical 7–21 (14 default). Longer = smoother/slower, shorter = twitchier. Keep it shorter than your trend EMAs.</li>
+        <li><b>Stochastic</b> — range position. %K period then %D smoothing; keep %D &lt; %K (e.g. 14/3/3). Leads price most, noisiest.</li>
+        <li><b>Bollinger</b> — volatility envelope. Period ~20, width 2σ. Wider σ = fewer, larger band breaks.</li>
+        <li><b>ADX</b> — trend strength (not direction), ~14. Longer period updates more slowly.</li>
+        <li><b>VWAP</b> — where volume traded. Window should match your horizon; shorter = more reactive.</li>
+        <li><b>OBV</b> — cumulative volume; the lookback only sets how far back "rising/falling" is judged.</li>
+      </ul>
+      <p class="muted">There is no single correct setting. What matters is that the periods are internally consistent and match your horizon. Warnings here are advice, not rules — you can ignore them once you understand why they fired.</p>
+    </div>
+  </details>
+</div>

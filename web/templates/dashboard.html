@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trading Analysis — {{ r.symbol }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/vendor/htmx.min.js"></script>
+  <script src="/static/vendor/lightweight-charts.js"></script>
+</head>
+<body data-symbol="{{ r.symbol }}" data-timeframe="{{ active_timeframe }}">
+
+  <header>
+    <div>
+      <h1>Trading Analysis</h1>
+      <div class="meta">{{ r.symbol }} · <span id="tf-label">{{ active_timeframe }}</span></div>
+    </div>
+    <button id="refresh">Refresh</button>
+  </header>
+
+  <section class="toolbar">
+    <div class="tf-group" id="tf-group">
+      {% for tf in timeframes %}
+      <button class="tf{{ ' active' if tf == active_timeframe else '' }}" data-tf="{{ tf }}">{{ tf }}</button>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="indicators">
+    <div class="ind-card">
+      <div class="ind-head">
+        <label><input type="checkbox" id="ema-on" checked> EMA <span class="acronym-full">Exponential Moving Average</span></label>
+      </div>
+      <div class="ind-body">
+        <label class="field">
+          <input type="checkbox" id="ema1-on" checked>
+          <span>Period 1</span>
+          <input type="number" id="ema1" value="{{ ema_periods[0] }}" min="2" max="400" step="1">
+        </label>
+        <label class="field">
+          <input type="checkbox" id="ema2-on" checked>
+          <span>Period 2</span>
+          <input type="number" id="ema2" value="{{ ema_periods[1] }}" min="2" max="400" step="1">
+        </label>
+        <label class="field">
+          <input type="checkbox" id="ema3-on" checked>
+          <span>Period 3</span>
+          <input type="number" id="ema3" value="{{ ema_periods[2] }}" min="2" max="400" step="1">
+        </label>
+        <span class="hint">Check a period to show its line.</span>
+      </div>
+    </div>
+
+    <div class="ind-card">
+      <div class="ind-head">
+        <label><input type="checkbox" id="bb-on" checked> Bollinger Bands</label>
+      </div>
+      <div class="ind-body">
+        <label class="field">
+          <span>Period</span>
+          <input type="number" id="bb-period" value="{{ bb_period }}" min="2" max="200" step="1">
+        </label>
+        <label class="field">
+          <span>Std Dev</span>
+          <input type="number" id="bb-std" value="{{ bb_std }}" min="0.5" max="5" step="0.1">
+        </label>
+        <span class="hint">Votes when price closes outside the bands.</span>
+      </div>
+    </div>
+
+    <div class="ind-card">
+      <div class="ind-head">
+        <label><input type="checkbox" id="vwap-on" checked> VWAP <span class="acronym-full">Volume-Weighted Average Price</span></label>
+      </div>
+      <div class="ind-body">
+        <label class="field">
+          <span>Window</span>
+          <input type="number" id="vwap-period" value="{{ vwap_period }}" min="2" max="200" step="1">
+        </label>
+      </div>
+    </div>
+
+    <div class="ind-card">
+      <div class="ind-head">
+        <label><input type="checkbox" id="osc-rsi-on" checked> RSI <span class="acronym-full">Relative Strength Index</span></label>
+      </div>
+      <div class="ind-body">
+        <label class="field">
+          <span>Period</span>
+          <input type="number" id="rsi-period" value="14" min="2" max="100" step="1">
+        </label>
+      </div>
+    </div>
+
+    <div class="ind-card">
+      <div class="ind-head">
+        <label><input type="checkbox" id="osc-macd-on"> MACD <span class="acronym-full">Moving Average Convergence Divergence</span></label>
+      </div>
+      <div class="ind-body">
+        <label class="field">
+          <span>Fast</span>
+          <input type="number" id="macd-fast" value="12" min="2" max="100" step="1">
+        </label>
+        <label class="field">
+          <span>Slow</span>
+          <input type="number" id="macd-slow" value="26" min="2" max="200" step="1">
+        </label>
+        <label class="field">
+          <span>Signal</span>
+          <input type="number" id="macd-signal" value="9" min="2" max="100" step="1">
+        </label>
+      </div>
+    </div>
+
+    <div class="ind-card">
+      <div class="ind-head">
+        <label><input type="checkbox" id="osc-stoch-on"> Stochastic</label>
+      </div>
+      <div class="ind-body">
+        <label class="field">
+          <span>%K</span>
+          <input type="number" id="stoch-k" value="14" min="2" max="100" step="1">
+        </label>
+        <label class="field">
+          <span>%D</span>
+          <input type="number" id="stoch-d" value="3" min="2" max="50" step="1">
+        </label>
+        <label class="field">
+          <span>Smooth</span>
+          <input type="number" id="stoch-smooth" value="3" min="1" max="50" step="1">
+        </label>
+      </div>
+    </div>
+
+    <div class="ind-card">
+      <div class="ind-head">
+        <label><input type="checkbox" id="osc-adx-on"> ADX <span class="acronym-full">Average Directional Index</span></label>
+      </div>
+      <div class="ind-body">
+        <label class="field">
+          <span>Period</span>
+          <input type="number" id="adx-period" value="14" min="2" max="100" step="1">
+        </label>
+      </div>
+    </div>
+
+    <div class="ind-card">
+      <div class="ind-head">
+        <label><input type="checkbox" id="osc-obv-on"> OBV <span class="acronym-full">On-Balance Volume</span></label>
+      </div>
+      <div class="ind-body">
+        <label class="field">
+          <span>Lookback</span>
+          <input type="number" id="obv-lookback" value="{{ obv_lookback }}" min="2" max="100" step="1">
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section class="card params-note" id="params-note">
+    {% include "_params.html" %}
+  </section>
+
+  <main>
+    <section class="card">
+      <div id="chart"></div>
+      <div id="osc-panes"></div>
+    </section>
+    <section id="panel" class="card">
+      {% include "_summary.html" %}
+    </section>
+  </main>
+
+  <footer>Level 0 — analysis only. No orders are placed. Not financial advice.</footer>
+
+  <script>window.__INITIAL_CHART__ = {{ chart_json | safe }};</script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

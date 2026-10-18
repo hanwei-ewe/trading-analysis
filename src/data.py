@@ -1,0 +1,96 @@
+import logging
+import re
+
+import pandas as pd
+
+from .config import resolve_path
+
+log = logging.getLogger(__name__)
+
+COLUMNS = ["timestamp", "open", "high", "low", "close", "volume"]
+
+_UNIT_SECONDS = {"m": 60, "h": 3600, "d": 86400, "w": 604800}
+
+
+def parse_timeframe(timeframe):
+    match = re.match(r"^(\d+)([mhdw])$", timeframe)
+    if not match:
+        raise ValueError(f"unsupported timeframe: {timeframe}")
+    return int(match.group(1)) * _UNIT_SECONDS[match.group(2)]
+
+
+def drop_incomplete(df, timeframe):
+    if df.empty:
+        return df
+    seconds = parse_timeframe(timeframe)
+    close_time = df.index[-1] + pd.Timedelta(seconds=seconds)
+    now = pd.Timestamp.now(tz="UTC")
+    return df.iloc[:-1] if now < close_time else df
+
+
+def candles_to_df(ohlcv):
+    df = pd.DataFrame(ohlcv, columns=COLUMNS)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+    df = df.set_index("timestamp").sort_index()
+    df.index.name = "timestamp"
+    for col in ("open", "high", "low", "close", "volume"):
+        df[col] = df[col].astype(float)
+    return df
+
+
+def _cache_path(cache_dir, symbol, timeframe):
+    name = f"{symbol.replace('/', '_')}_{timeframe}.csv"
+    return cache_dir / name
+
+
+def _read_cache(path):
+    df = pd.read_csv(path, index_col="timestamp", parse_dates=["timestamp"])
+    if df.index.tz is None:
+        df.index = df.index.tz_localize("UTC")
+    return df
+
+
+def _fetch_range(adapter, symbol, timeframe, since, limit, step_ms, max_batches=20):
+    rows = []
+    cursor = since
+    for _ in range(max_batches):
+        batch = adapter.fetch_ohlcv(symbol, timeframe, limit=limit, since=cursor)
+        if not batch:
+            break
+        rows.extend(batch)
+        if len(batch) < limit:
+            break
+        cursor = batch[-1][0] + step_ms
+    return rows
+
+
+def load_candles(adapter, symbol, timeframe, limit=1000, cache_dir=None, use_cache=True):
+    cache_dir = resolve_path(cache_dir) if cache_dir else resolve_path("data/cache")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = _cache_path(cache_dir, symbol, timeframe)
+
+    cached = None
+    if use_cache and path.exists():
+        try:
+            cached = _read_cache(path)
+        except Exception as err:
+            log.warning("cache read failed for %s: %s", path, err)
+            cached = None
+
+    if cached is not None and not cached.empty:
+        step_ms = parse_timeframe(timeframe) * 1000
+        since = int(cached.index[-1].timestamp() * 1000) + step_ms
+        raw = _fetch_range(adapter, symbol, timeframe, since, limit, step_ms)
+    else:
+        raw = adapter.fetch_ohlcv(symbol, timeframe, limit=limit)
+
+    fresh = candles_to_df(raw)
+
+    if cached is not None and not cached.empty:
+        combined = pd.concat([cached, fresh])
+        combined = combined[~combined.index.duplicated(keep="last")].sort_index()
+    else:
+        combined = fresh
+
+    combined.to_csv(path)
+    return combined

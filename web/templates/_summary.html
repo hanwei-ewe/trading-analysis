@@ -1,0 +1,112 @@
+<div class="summary">
+  <div class="bias bias-{{ r.bias | lower | replace('-', '_') }}">
+    <span class="bias-label">{{ r.bias }}</span>
+    <span class="bias-sub">confidence {{ r.confidence }} · score {{ r.score }} of {{ r.max_score }}</span>
+  </div>
+
+  <div class="grid">
+    <div class="kv"><span>Price</span><b>{{ "%.2f"|format(r.price) }}</b></div>
+    <div class="kv"><span>Regime</span><b>{{ r.regime.state }}</b></div>
+    <div class="kv"><span>Momentum</span><b>{{ r.momentum.state }}</b></div>
+    <div class="kv"><span>Volatility</span><b>{{ r.volatility.state }}</b></div>
+    <div class="kv"><span>RSI</span><b>{{ "%.1f"|format(r.momentum.rsi) }}</b></div>
+    <div class="kv"><span>ATR %</span><b>{{ "%.2f"|format(r.volatility.atr_pct) }}</b></div>
+    <div class="kv"><span>Support</span><b>{{ "%.2f"|format(r.levels.support) }}</b></div>
+    <div class="kv"><span>Resistance</span><b>{{ "%.2f"|format(r.levels.resistance) }}</b></div>
+    <div class="kv"><span>VWAP</span><b>{{ "%.2f"|format(r.levels.vwap) }}</b></div>
+    <div class="kv"><span>Volume</span><b>{{ r.volume.state }}</b></div>
+  </div>
+
+  {% if r.signal %}
+  <div class="signal">
+    <h3>Proposal — {{ r.signal.direction }}</h3>
+    <div class="grid">
+      <div class="kv"><span>Entry zone</span><b>{{ "%.2f"|format(r.signal.entry_low) }} – {{ "%.2f"|format(r.signal.entry_high) }}</b></div>
+      <div class="kv"><span>Stop</span><b>{{ "%.2f"|format(r.signal.stop) }}</b></div>
+      <div class="kv"><span>Target 1</span><b>{{ "%.2f"|format(r.signal.t1) }}</b></div>
+      <div class="kv"><span>Target 2</span><b>{{ "%.2f"|format(r.signal.t2) }}</b></div>
+      <div class="kv"><span>R/R</span><b>{{ "%.2f"|format(r.signal.rr) }}</b></div>
+    </div>
+    <p class="muted">Invalidation: {{ r.signal.invalidation }}</p>
+  </div>
+  {% else %}
+  <p class="muted">No actionable proposal (NEUTRAL-FLAT or R/R below the minimum).</p>
+  {% endif %}
+
+  {% set ex = r.explanations %}
+  {% if ex %}
+  <div class="coach">
+    <h3>Market context</h3>
+    <p>{{ ex.context.summary }}</p>
+
+    <h3>Which indicators matter right now</h3>
+    <ul class="focus">
+      {% for f in ex.focus %}
+      <li>
+        <span class="rel rel-{{ f.relevance | lower }}">{{ f.relevance }}</span>
+        <b>{{ f.name }}</b>
+        <span class="vote vote-{{ f.lean }}">{{ f.lean }}</span>
+        <span class="muted">{{ f.reason }}</span>
+        <div class="muted reading">{{ f.reading }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <h3>How they compare</h3>
+    <p>{{ ex.comparison.text }}</p>
+    {% for n in ex.comparison.notes %}<p>{{ n }}</p>{% endfor %}
+    <p class="muted">{{ ex.comparison.complement }}</p>
+
+    <p class="muted">Enable more oscillators above to include them in this comparison.</p>
+  </div>
+
+  <div class="learn">
+    <h3>Why this read?</h3>
+    <p class="muted">{{ ex.confidence.text }} {{ ex.confidence.note }}</p>
+
+    <div class="checks">
+      {% for c in ex.checks %}
+      <details class="check check-{{ c.vote }}">
+        <summary>
+          <span class="vote vote-{{ c.vote }}">{{ c.vote }}</span>
+          <span class="check-label">{{ c.label }}</span>
+          <span class="check-reading">{{ c.reading }}</span>
+        </summary>
+        <div class="check-body">
+          <p><b>What it means:</b> {{ c.meaning }}</p>
+          <p><b>Why it counts:</b> {{ c.why }}</p>
+          <p><b>Rule:</b> <code>{{ c.rule }}</code></p>
+          <p><b>What would change it:</b> {{ c.flip }}</p>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+
+    <div class="risk">
+      <h4>Risk &amp; invalidation</h4>
+      <p>{{ ex.risk.text }}</p>
+      {% if ex.risk.invalidation %}
+      <p class="muted">Invalidation: {{ ex.risk.invalidation }}</p>
+      {% endif %}
+    </div>
+
+    <details class="glossary">
+      <summary>What do these indicators mean?</summary>
+      <dl>
+        {% for g in ex.glossary %}
+        <dt>{{ g.name }}</dt>
+        <dd>
+          <p>{{ g.meaning }}</p>
+          <p><b>Here:</b> {{ g.usage }}</p>
+          <p class="muted">Watch out: {{ g.pitfall }}</p>
+        </dd>
+        {% endfor %}
+      </dl>
+    </details>
+  </div>
+  {% endif %}
+
+  <p class="muted">
+    Data as of {{ r.data_as_of }} · generated {{ r.generated_at }}
+  </p>
+</div>
