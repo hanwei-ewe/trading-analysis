@@ -1,6 +1,6 @@
 # PLAN.md — Roadmap
 
-_Version 1.9 — 2026-10-18._
+_Version 2.0 — 2026-10-18._
 _Companion to RULES.md (constraints) and DESIGN.md (architecture)._
 
 ## Phase 1 — Analysis + Foundations (current)
@@ -41,6 +41,9 @@ Milestones:
       `score of N`; journal records effective inputs (timeframe, active checks,
       parameters) for reproducibility; test runner + engine/parameter tests
       (`tests/run.py`).
+- [x] Multi-timeframe confluence: `1d` regime and `4h`/`15m` context feeds scored
+      higher-timeframe checks and caps confidence when counter-trend; shown in a
+      "Multi-timeframe" block (see DESIGN.md §10).
 
 ## Phase 2 — Strategy Framework + Backtesting
 

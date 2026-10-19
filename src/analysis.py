@@ -64,7 +64,7 @@ def _build_signal(direction, price, atr_v, support, resistance, cfg, timeframe="
     }
 
 
-def analyze(df, cfg, ind=None, active=None, timeframe=None):
+def analyze(df, cfg, ind=None, active=None, timeframe=None, htf_checks=None):
     if ind is None:
         ind = add_indicators(df, cfg)
     tf = timeframe or cfg["timeframes"]["primary"]
@@ -261,6 +261,9 @@ def analyze(df, cfg, ind=None, active=None, timeframe=None):
                 f"{'rising' if rising else 'falling'} over the last {obl} bars",
             )
 
+    for htf in htf_checks or []:
+        checks.append(dict(htf))
+
     n_checks = len(checks)
     score = sum(c["weight"] for c in checks)
     agree = abs(score) / n_checks if n_checks else 0.0
@@ -276,6 +279,15 @@ def analyze(df, cfg, ind=None, active=None, timeframe=None):
         confidence = "High"
     else:
         confidence = "Medium"
+
+    if htf_checks and bias in ("LONG", "SHORT"):
+        opposing = any(
+            (bias == "LONG" and c["weight"] < 0)
+            or (bias == "SHORT" and c["weight"] > 0)
+            for c in htf_checks
+        )
+        if opposing and confidence == "High":
+            confidence = "Medium"
 
     signal = None
     if bias in ("LONG", "SHORT"):

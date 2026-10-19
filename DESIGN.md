@@ -1,6 +1,6 @@
 # DESIGN.md — Trading Analysis Agent
 
-_Architecture, method, and conventions. Version 2.0 — 2026-10-18._
+_Architecture, method, and conventions. Version 2.1 — 2026-10-18._
 _Companion to RULES.md (constraints) and PLAN.md (roadmap)._
 
 ## 1. Broker & Data Source
@@ -303,6 +303,23 @@ and pairs a collapsed **"How to choose parameters"** guide explaining the
 faster-vs-slower rule of thumb and how indicators complement each other. Errors
 and warnings are advice, not restrictions — a knowledgeable user may proceed
 regardless.
+
+#### Multi-timeframe confluence
+
+The selected timeframe is the **primary** frame. The `timeframes.regime` (`1d`) and
+`timeframes.context` (`4h`, `15m`) frames are computed with the same rule engine
+and the same enabled checks, then:
+
+- every frame **higher** than the primary contributes a scored check
+  (`Higher timeframe (<tf>) bias`, weight `+1`/`−1`/`0`) so confluence with the
+  bigger trend strengthens the score and fighting it weakens it;
+- an **opposing** higher frame **caps confidence at Medium** (a counter-trend
+  setup can no longer read High), implemented as a post-score cap in the engine;
+- all frames are shown in a **"Multi-timeframe"** block with agreement labels
+  (aligned / mixed / counter) against the primary bias.
+
+If no checks are enabled the MTF layer is skipped, and any frame that cannot be
+loaded is ignored rather than failing the request.
 
 ### Default indicator parameters
 

@@ -321,17 +321,68 @@ def get_overlays(
     }
 
 
+def _mtf_frames(cfg, primary):
+    frames = []
+    for tf in [cfg["timeframes"]["regime"], *cfg["timeframes"]["context"]]:
+        if tf != primary and tf not in frames:
+            frames.append(tf)
+    return frames
+
+
+def _multi_timeframe(cfg, primary, active):
+    psec = data_mod.parse_timeframe(primary)
+    frames = []
+    htf_checks = []
+    for tf in _mtf_frames(cfg, primary):
+        try:
+            df = data_mod.drop_incomplete(_load_df(cfg, tf), tf)
+            res = analyze(df, cfg, active=active, timeframe=tf)
+        except Exception:
+            continue
+        frames.append(
+            {
+                "timeframe": tf,
+                "bias": res["bias"],
+                "confidence": res["confidence"],
+                "score": res["score"],
+                "max_score": res["max_score"],
+            }
+        )
+        if data_mod.parse_timeframe(tf) > psec:
+            vote = 1 if res["bias"] == "LONG" else (-1 if res["bias"] == "SHORT" else 0)
+            htf_checks.append(
+                {
+                    "id": f"htf_{tf}",
+                    "label": f"Higher timeframe ({tf}) bias",
+                    "vote": vote,
+                    "weight": vote,
+                    "reading": (
+                        f"{tf} reads {res['bias']} "
+                        f"(score {res['score']:+d}/{res['max_score']})"
+                    ),
+                }
+            )
+    return frames, htf_checks
+
+
 def run_analysis(config_path=None, timeframe=None, do_journal=True, selected=None, params=None, active=None):
     cfg = _with_params(load_config(config_path), params)
     symbol = cfg["universe"]["pair"]
     tf = _resolve_timeframe(cfg, timeframe)
-    df = _load_df(cfg, tf)
-    df = data_mod.drop_incomplete(df, tf)
+    df = data_mod.drop_incomplete(_load_df(cfg, tf), tf)
+
+    if active is not None and len(active) == 0:
+        frames, htf_checks = [], []
+    else:
+        frames, htf_checks = _multi_timeframe(cfg, tf, active)
 
     ind_df = ind_mod.add_indicators(df, cfg)
-    result = analyze(df, cfg, ind=ind_df, active=active, timeframe=tf)
+    result = analyze(
+        df, cfg, ind=ind_df, active=active, timeframe=tf, htf_checks=htf_checks
+    )
     result["symbol"] = symbol
     result["timeframe"] = tf
+    result["mtf"] = {"primary": tf, "frames": frames}
     result["inputs"] = {
         "timeframe": tf,
         "indicators": cfg["indicators"],
@@ -360,14 +411,21 @@ def get_explanations(config_path=None, timeframe=None, selected=None, params=Non
     symbol = cfg["universe"]["pair"]
     tf = _resolve_timeframe(cfg, timeframe)
     df = data_mod.drop_incomplete(_load_df(cfg, tf), tf)
+    if active is not None and len(active) == 0:
+        frames, htf_checks = [], []
+    else:
+        frames, htf_checks = _multi_timeframe(cfg, tf, active)
     ind_df = ind_mod.add_indicators(df, cfg)
-    result = analyze(df, cfg, ind=ind_df, active=active, timeframe=tf)
+    result = analyze(
+        df, cfg, ind=ind_df, active=active, timeframe=tf, htf_checks=htf_checks
+    )
     return {
         "symbol": symbol,
         "timeframe": tf,
         "bias": result["bias"],
         "confidence": result["confidence"],
         "score": result["score"],
+        "mtf": {"primary": tf, "frames": frames},
         **explain(result, cfg, ind_df=ind_df, selected=selected, params=params),
     }
 

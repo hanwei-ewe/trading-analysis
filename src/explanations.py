@@ -252,6 +252,21 @@ CHECK_TEXT = {
         "rule": "%B > 1 (+1) · %B < 0 (−1) · otherwise 0.",
         "flip": "Price moving back inside the bands removes the vote.",
     },
+    "htf": {
+        "meaning": (
+            "The higher-timeframe read checks whether the bigger trend agrees with "
+            "your chosen timeframe."
+        ),
+        "why": (
+            "A signal that lines up with the higher timeframe is far more reliable; "
+            "fighting the bigger trend is a common way to get whipsawed."
+        ),
+        "rule": (
+            "Higher frame bias LONG (+1) · SHORT (−1) · NEUTRAL (0); an opposing "
+            "higher frame caps confidence at Medium."
+        ),
+        "flip": "The higher timeframe flipping its bias changes this vote.",
+    },
 }
 
 _VOTE_WORD = {1: "bullish", -1: "bearish", 0: "neutral"}
@@ -357,7 +372,9 @@ def _readings(checks, ind_df, selected, params=None):
             {
                 "key": c["id"],
                 "name": c["label"],
-                "role": _ROLE.get(c["id"], "other"),
+                "role": _ROLE.get(
+                    c["id"], "trend" if c["id"].startswith("htf_") else "other"
+                ),
                 "lean": _VOTE_WORD.get(c["weight"], "neutral"),
                 "reading": c["reading"],
             }
@@ -620,7 +637,9 @@ def _comparison(readings):
 def explain(result, cfg, ind_df=None, selected=None, params=None):
     checks = []
     for c in result.get("checks", []):
-        info = CHECK_TEXT.get(c["id"], {})
+        info = CHECK_TEXT.get(c["id"])
+        if info is None:
+            info = CHECK_TEXT.get("htf", {}) if c["id"].startswith("htf_") else {}
         checks.append(
             {
                 "id": c["id"],

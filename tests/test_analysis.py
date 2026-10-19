@@ -64,6 +64,24 @@ def test_score_within_active_bounds():
         assert abs(res["score"]) <= res["max_score"] == len(active)
 
 
+def test_htf_check_counts_toward_score():
+    base = analyze(_df(), CFG)
+    htf = [{"id": "htf_4h", "label": "x", "vote": 0, "weight": 0, "reading": "y"}]
+    res = analyze(_df(), CFG, htf_checks=htf)
+    assert res["max_score"] == base["max_score"] + 1
+    assert any(c["id"] == "htf_4h" for c in res["checks"])
+
+
+def test_opposing_htf_caps_confidence():
+    strong = _df(n=260, drift=1.0)
+    base = analyze(strong, CFG)
+    assert base["confidence"] == "High"
+    weight = -1 if base["bias"] == "LONG" else 1
+    htf = [{"id": "htf_1d", "label": "HTF", "vote": weight, "weight": weight, "reading": "opposing"}]
+    capped = analyze(strong, CFG, htf_checks=htf)
+    assert capped["confidence"] != "High"
+
+
 def main():
     failures = 0
     for name, fn in sorted(globals().items()):

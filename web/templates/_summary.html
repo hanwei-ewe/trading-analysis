@@ -33,6 +33,33 @@
   <p class="muted">No actionable proposal (NEUTRAL-FLAT or R/R below the minimum).</p>
   {% endif %}
 
+  {% if r.mtf and r.mtf.frames %}
+  <div class="mtf">
+    <h3>Multi-timeframe</h3>
+    <ul>
+      <li class="mtf-row">
+        <span class="tf-tag">{{ r.mtf.primary }}</span>
+        <b>{{ r.bias }}</b>
+        <span class="muted">your timeframe · score {{ r.score }} of {{ r.max_score }}</span>
+      </li>
+      {% for f in r.mtf.frames %}
+      <li class="mtf-row">
+        <span class="tf-tag">{{ f.timeframe }}</span>
+        <b>{{ f.bias }}</b>
+        <span class="muted">score {{ f.score }} of {{ f.max_score }}</span>
+        {% if f.bias == r.bias %}
+        <span class="vote vote-bullish">aligned</span>
+        {% elif f.bias == 'NEUTRAL-FLAT' or r.bias == 'NEUTRAL-FLAT' %}
+        <span class="vote vote-neutral">mixed</span>
+        {% else %}
+        <span class="vote vote-bearish">counter</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
   {% set ex = r.explanations %}
   {% if ex %}
   <div class="coach">
