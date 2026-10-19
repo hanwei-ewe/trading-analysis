@@ -43,6 +43,11 @@ def _cache_path(cache_dir, symbol, timeframe):
     return cache_dir / name
 
 
+def _history_path(cache_dir, symbol, timeframe):
+    name = f"{symbol.replace('/', '_')}_{timeframe}_history.csv"
+    return cache_dir / name
+
+
 def _read_cache(path):
     df = pd.read_csv(path, index_col="timestamp", parse_dates=["timestamp"])
     if df.index.tz is None:
@@ -94,3 +99,66 @@ def load_candles(adapter, symbol, timeframe, limit=1000, cache_dir=None, use_cac
 
     combined.to_csv(path)
     return combined
+
+
+def load_history(
+    adapter,
+    symbol,
+    timeframe,
+    days,
+    cache_dir=None,
+    use_cache=True,
+    limit=1000,
+):
+    cache_dir = resolve_path(cache_dir) if cache_dir else resolve_path("data/cache")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = _history_path(cache_dir, symbol, timeframe)
+
+    step = parse_timeframe(timeframe)
+    step_ms = step * 1000
+    now = pd.Timestamp.now(tz="UTC")
+    start = now - pd.Timedelta(days=days)
+
+    cached = None
+    if use_cache and path.exists():
+        try:
+            cached = _read_cache(path)
+        except Exception as err:
+            log.warning("history cache read failed for %s: %s", path, err)
+            cached = None
+
+    covered = (
+        cached is not None
+        and not cached.empty
+        and cached.index[0] <= start
+        and cached.index[-1] >= now - pd.Timedelta(seconds=2 * step)
+    )
+
+    if not covered:
+        fetch_start = start
+        if cached is not None and not cached.empty:
+            fetch_start = min(fetch_start, cached.index[0])
+        span = max((now - fetch_start).total_seconds(), 0.0)
+        max_batches = int(span / step / limit) + 3
+        raw = _fetch_range(
+            adapter,
+            symbol,
+            timeframe,
+            int(fetch_start.timestamp() * 1000),
+            limit,
+            step_ms,
+            max_batches=max_batches,
+        )
+        fresh = candles_to_df(raw)
+        if cached is not None and not cached.empty:
+            combined = pd.concat([cached, fresh])
+            combined = combined[~combined.index.duplicated(keep="last")].sort_index()
+        else:
+            combined = fresh
+        combined.to_csv(path)
+    else:
+        combined = cached
+
+    window = combined[combined.index >= start]
+    window = window[window.index < now]
+    return drop_incomplete(window, timeframe)

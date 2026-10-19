@@ -1,6 +1,6 @@
 # DESIGN.md — Trading Analysis Agent
 
-_Architecture, method, and conventions. Version 2.1 — 2026-10-18._
+_Architecture, method, and conventions. Version 2.2 — 2026-10-19._
 _Companion to RULES.md (constraints) and PLAN.md (roadmap)._
 
 ## 1. Broker & Data Source
@@ -237,6 +237,25 @@ Robustness protocol:
 - Train / validation / out-of-sample splits.
 - Walk-forward analysis (rolling re-fit) instead of one-shot optimization.
 - Parameter-sensitivity checks; reject strategies that only work at one setting.
+
+Implementation notes (first slice):
+- `data.load_history()` pages Binance OHLCV into a dedicated `*_history.csv`
+  cache and fetches extra warmup bars so EMA200/ADX are valid at the window
+  start.
+- `backtest.py` precomputes causal indicators and confirms swing pivots only
+  `lookback` bars after they form; support/resistance never see the future.
+  `analyze(..., at=i)` evaluates a single closed bar.
+- Higher-timeframe checks are aligned with `merge_asof` on candle **close**
+  times, so a primary bar only sees HTF bars that have already closed.
+- Execution: signal on a closed bar → market fill at the next bar's open;
+  structural stop from the proposal; target either the proposal T1 or
+  `min_rr × risk` from the fill (`--target`); one position at a time; optional
+  reverse on an opposite bias.
+- Sizing: `max_risk_pct` of current equity per trade, notional capped at equity.
+- Costs: taker fee + slippage on both legs (configurable on the CLI).
+- Outputs: `results/backtest_*` JSON + Markdown + equity/trade CSVs.
+- CLI: `python -m src.backtest --timeframe 1h --days 365`
+  `[--checks default|all|ids] [--target proposal|rr] [--no-mtf]`.
 
 ## 9. Execution Path (deferred)
 

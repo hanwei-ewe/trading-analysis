@@ -1,9 +1,9 @@
 # PLAN.md — Roadmap
 
-_Version 2.0 — 2026-10-18._
+_Version 2.1 — 2026-10-19._
 _Companion to RULES.md (constraints) and DESIGN.md (architecture)._
 
-## Phase 1 — Analysis + Foundations (current)
+## Phase 1 — Analysis + Foundations (done)
 
 - Universe: `ETH/USDT` spot.
 - Data: Binance public REST/WS. No API key.
@@ -45,20 +45,38 @@ Milestones:
       higher-timeframe checks and caps confidence when counter-trend; shown in a
       "Multi-timeframe" block (see DESIGN.md §10).
 
-## Phase 2 — Strategy Framework + Backtesting
+## Phase 2 — Strategy Framework + Backtesting (current)
 
 - Expand the price-overlay library via a registry (SMA/WMA/Keltner/Donchian/
   Ichimoku) without touching the chart core.
 - `strategy/base.py`: pluggable `Strategy` interface (signals only).
 - `risk.py`: sizing + RULES.md §5 limits, decoupled from strategies.
-- `backtest.py`: event-driven engine, no look-ahead bias, modeled costs.
-- `metrics.py`: return, Sharpe/Sortino, max drawdown, win rate, profit factor,
-  benchmark vs buy-and-hold ETH.
-- `results/`: persist config, params, metrics, equity curves.
-- Web UI: Strategy editor + Backtests view (metrics, equity curve, comparison).
-- Robustness: train/validation/out-of-sample + walk-forward.
+- [x] `data.load_history`: paged historical OHLCV + warmup for long windows.
+- [x] `backtest.py`: event-driven engine, no look-ahead bias, modeled costs.
+- [x] `metrics.py`: return, Sharpe/Sortino, max drawdown, win rate, profit
+      factor, benchmark vs buy-and-hold ETH (currently inside `backtest.py`;
+      extract when a second strategy exists).
+- [x] `results/`: persist config, params, metrics, equity curves, trades.
+- [ ] Web UI: Strategy editor + Backtests view (metrics, equity curve,
+      comparison).
+- [ ] Robustness: train/validation/out-of-sample + walk-forward.
 - Deliverable: author a strategy, backtest it, review results in the UI — no
   live trading.
+
+First validation (365 days ending 2026-10-19, default 5 checks + MTF, 1% risk,
+0.10% fee + 0.05% slippage, market entry at next open):
+
+| Frame | Return | Buy & hold | Sharpe | Max DD | Trades | Win | PF |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1h, proposal T1 | -50.8% | -38.2% | -3.23 | -52.1% | 337 | 40.9% | 0.70 |
+| 1h, 2R target | -40.0% | -38.2% | -2.17 | -42.5% | 281 | 33.8% | 0.77 |
+| 4h, proposal T1 | -4.1% | -38.3% | -0.34 | -10.4% | 89 | 44.9% | 0.92 |
+| 4h, 2R target | -6.8% | -38.3% | -0.58 | -13.4% | 74 | 35.1% | 0.86 |
+
+Finding: MTF materially improved 1h (no-MTF was -87.3%), but the market entry
+after a pullback proposal yields sub-2R fills and costs erase the remaining
+edge. Next experiments: limit entries at the proposal zone, regime filters,
+and 4h/1d walk-forward.
 
 ## Phase 3 — Paper Trading
 

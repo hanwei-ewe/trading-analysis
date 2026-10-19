@@ -62,6 +62,24 @@ of the enabled checks to agree **and** `|score| ≥ 2`; ≥80% agreement with
 `|score| ≥ 3` is High confidence. A proposal is only emitted when it also clears
 the minimum reward-to-risk. See `DESIGN.md` §10.
 
+## Backtesting
+
+Validate the signal on history with modeled costs and no look-ahead (signals on
+closed bars, market fills at the next bar's open):
+
+```bash
+./dev.sh python -m src.backtest --timeframe 1h --days 365
+./dev.sh python -m src.backtest --timeframe 4h --days 365 --target rr
+```
+
+Options: `--checks default|all|rsi,macd,...`, `--target proposal|rr`,
+`--no-mtf`, `--days`, `--equity`, `--fee`, `--slippage`, `--no-cache`.
+
+Each run writes JSON + Markdown + equity/trade CSVs to `results/` (gitignored)
+and prints the summary. The first 365-day validation is recorded in `PLAN.md`
+(Phase 2): MTF helped, but market entries after a pullback proposal produced
+sub-2R fills and costs erased the edge; 4h was closest to breakeven.
+
 ## API
 
 | Method | Path | Purpose |
@@ -76,9 +94,9 @@ the minimum reward-to-risk. See `DESIGN.md` §10.
 
 ```
 src/     engine: config, exchange, data, indicators, analysis,
-         explanations, params, pipeline, report, journal
+         explanations, params, pipeline, report, journal, backtest
 web/     FastAPI app, Jinja templates, static assets (incl. vendored libs)
-tests/   indicator tests
+tests/   indicator / engine / parameter / backtest tests
 ```
 
 ## Docs

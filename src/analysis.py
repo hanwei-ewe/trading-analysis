@@ -64,7 +64,17 @@ def _build_signal(direction, price, atr_v, support, resistance, cfg, timeframe="
     }
 
 
-def analyze(df, cfg, ind=None, active=None, timeframe=None, htf_checks=None):
+def analyze(
+    df,
+    cfg,
+    ind=None,
+    active=None,
+    timeframe=None,
+    htf_checks=None,
+    at=None,
+    support=None,
+    resistance=None,
+):
     if ind is None:
         ind = add_indicators(df, cfg)
     tf = timeframe or cfg["timeframes"]["primary"]
@@ -72,7 +82,8 @@ def analyze(df, cfg, ind=None, active=None, timeframe=None, htf_checks=None):
     if len(ind) < min_history:
         raise ValueError(f"need >= {min_history} candles, got {len(ind)}")
 
-    last = ind.iloc[-1]
+    pos = len(ind) - 1 if at is None else (at if at >= 0 else len(ind) + at)
+    last = ind.iloc[pos]
     price = float(last["close"])
 
     periods = cfg["indicators"]["ema"]
@@ -116,13 +127,16 @@ def analyze(df, cfg, ind=None, active=None, timeframe=None, htf_checks=None):
     else:
         vol_state = "normal"
 
-    swing_highs, swing_lows = _swing_points(ind, cfg["swings"]["lookback"])
-    resistance = _nearest_above(swing_highs, price)
-    support = _nearest_below(swing_lows, price)
-    if resistance is None:
-        resistance = price + 2.0 * atr_v
-    if support is None:
-        support = price - 2.0 * atr_v
+    if support is None or resistance is None:
+        swing_highs, swing_lows = _swing_points(ind, cfg["swings"]["lookback"])
+        if resistance is None:
+            resistance = _nearest_above(swing_highs, price)
+        if support is None:
+            support = _nearest_below(swing_lows, price)
+        if resistance is None:
+            resistance = price + 2.0 * atr_v
+        if support is None:
+            support = price - 2.0 * atr_v
 
     if vol_ma and volume >= 1.5 * vol_ma:
         volume_state = "spike"
@@ -223,10 +237,16 @@ def analyze(df, cfg, ind=None, active=None, timeframe=None, htf_checks=None):
 
     if "stoch" in active:
         kp, dp, sp = [int(x) for x in cfg["indicators"].get("stoch", [14, 3, 3])]
-        if len(ind) > max(kp, dp, sp):
-            s = ind_mod.stochastic(ind["high"], ind["low"], ind["close"], kp, dp, sp)
-            k = float(s["stoch_k"].iloc[-1])
-            d = float(s["stoch_d"].iloc[-1])
+        if "stoch_k" in ind.columns and "stoch_d" in ind.columns:
+            k = float(ind["stoch_k"].iloc[pos])
+            d = float(ind["stoch_d"].iloc[pos])
+        else:
+            k = d = float("nan")
+            if len(ind) > max(kp, dp, sp):
+                s = ind_mod.stochastic(ind["high"], ind["low"], ind["close"], kp, dp, sp)
+                k = float(s["stoch_k"].iloc[pos])
+                d = float(s["stoch_d"].iloc[pos])
+        if k == k and d == d:
             add_check(
                 "stoch",
                 f"Stochastic ({kp},{dp},{sp})",
@@ -236,11 +256,18 @@ def analyze(df, cfg, ind=None, active=None, timeframe=None, htf_checks=None):
 
     if "adx" in active:
         ap = int(cfg["indicators"].get("adx", 14))
-        if len(ind) > ap + 1:
-            a = ind_mod.adx(ind["high"], ind["low"], ind["close"], ap)
-            adx_v = float(a["adx"].iloc[-1])
-            pdi = float(a["plus_di"].iloc[-1])
-            mdi = float(a["minus_di"].iloc[-1])
+        if "adx" in ind.columns and "plus_di" in ind.columns:
+            adx_v = float(ind["adx"].iloc[pos])
+            pdi = float(ind["plus_di"].iloc[pos])
+            mdi = float(ind["minus_di"].iloc[pos])
+        else:
+            adx_v = pdi = mdi = float("nan")
+            if len(ind) > ap + 1:
+                a = ind_mod.adx(ind["high"], ind["low"], ind["close"], ap)
+                adx_v = float(a["adx"].iloc[pos])
+                pdi = float(a["plus_di"].iloc[pos])
+                mdi = float(a["minus_di"].iloc[pos])
+        if adx_v == adx_v:
             adx_vote = 0 if adx_v < 20 else (1 if pdi > mdi else -1)
             add_check(
                 "adx",
@@ -251,9 +278,17 @@ def analyze(df, cfg, ind=None, active=None, timeframe=None, htf_checks=None):
 
     if "obv" in active:
         obl = int(cfg["indicators"].get("obv", 10))
-        if len(ind) > obl + 1:
-            o = ind_mod.obv(ind["close"], ind["volume"])
-            rising = float(o.iloc[-1]) > float(o.iloc[-1 - obl])
+        if "obv" in ind.columns:
+            o = ind["obv"]
+            ok = pos - obl >= 0
+            rising = ok and float(o.iloc[pos]) > float(o.iloc[pos - obl])
+        else:
+            ok = len(ind) > obl + 1
+            rising = False
+            if ok:
+                o = ind_mod.obv(ind["close"], ind["volume"])
+                rising = float(o.iloc[pos]) > float(o.iloc[pos - obl])
+        if ok:
             add_check(
                 "obv",
                 f"OBV (On-Balance Volume, {obl})",
