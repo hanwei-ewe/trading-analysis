@@ -671,6 +671,7 @@ def _buy_hold(ind, start_idx):
 def run_backtest(
     config_path=None,
     timeframe=None,
+    symbol=None,
     days=365,
     checks=None,
     initial_equity=10000.0,
@@ -693,7 +694,7 @@ def run_backtest(
     if target_r is not None and float(target_r) <= 0:
         raise ValueError("target_r must be > 0")
     cfg = load_config(config_path)
-    pair = cfg["universe"]["pair"]
+    pair = symbol or cfg["universe"]["pair"]
     tf = timeframe or cfg["timeframes"]["primary"]
     active = set(checks or DEFAULT_CHECKS)
     step = data_mod.parse_timeframe(tf)
@@ -894,6 +895,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Backtest the confluence strategy")
     parser.add_argument("--config", default=None)
     parser.add_argument("--timeframe", default=None)
+    parser.add_argument("--symbol", default=None)
     parser.add_argument("--days", type=int, default=365)
     parser.add_argument("--checks", default="default",
                         help="default, all, or comma-separated check ids")
@@ -917,6 +919,7 @@ def main(argv=None):
     result = run_backtest(
         config_path=args.config,
         timeframe=args.timeframe,
+        symbol=args.symbol,
         days=args.days,
         checks=_parse_checks(args.checks),
         initial_equity=args.equity,

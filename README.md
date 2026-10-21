@@ -97,6 +97,11 @@ tuning period and +10.5R during it (PF 1.13/1.21); over 5 years it made +17.3%
 original 1x/2R lost -17.3% over 5 years. The 2x/3R edge is fat-tailed and
 concentrated, so it is a paper-trading candidate, not a real-capital strategy.
 
+Cross-asset BTC over the same 5 years: 2x/3R +25.3% (Sharpe 0.56, DD -10.6%,
+PF 1.22), with a strong pre-2024 holdout (+29.3R) but a negative recent period
+(-4.7R); ETH was +10.5R in the same recent period. The edge is
+regime-dependent, but 2x/3R is the only config positive on both assets.
+
 ## API
 
 | Method | Path | Purpose |

@@ -76,6 +76,7 @@ def _pool(summaries):
 
 def run_walk_forward(
     timeframe=None,
+    symbol=None,
     days=730,
     train_days=180,
     test_days=90,
@@ -97,6 +98,7 @@ def run_walk_forward(
     for stop_mult, target_r in product(stop_mults, target_rs):
         result = run_backtest(
             timeframe=timeframe,
+            symbol=symbol,
             days=days,
             entry_mode=entry_mode,
             regime_filter=regime_filter,
@@ -198,6 +200,7 @@ def run_walk_forward(
         )
 
     return {
+        "symbol": next(iter(runs.values()))["symbol"],
         "timeframe": timeframe,
         "days": days,
         "train_days": train_days,
@@ -218,7 +221,7 @@ def run_walk_forward(
 def format_report(result):
     tf = result["timeframe"] or "default"
     lines = [
-        f"# Walk-forward — {tf} ({result['days']}d)",
+        f"# Walk-forward — {result['symbol']} {tf} ({result['days']}d)",
         "",
         f"- Train {result['train_days']}d / test {result['test_days']}d / "
         f"step {result['step_days']}d",
@@ -272,6 +275,7 @@ def format_report(result):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Walk-forward backtest validation")
     parser.add_argument("--timeframe", default=None)
+    parser.add_argument("--symbol", default=None)
     parser.add_argument("--days", type=int, default=730)
     parser.add_argument("--train-days", type=int, default=180)
     parser.add_argument("--test-days", type=int, default=90)
@@ -290,6 +294,7 @@ def main(argv=None):
 
     result = run_walk_forward(
         timeframe=args.timeframe,
+        symbol=args.symbol,
         days=args.days,
         train_days=args.train_days,
         test_days=args.test_days,

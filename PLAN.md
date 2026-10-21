@@ -1,6 +1,6 @@
 # PLAN.md — Roadmap
 
-_Version 2.6 — 2026-10-19._
+_Version 2.7 — 2026-10-19._
 _Companion to RULES.md (constraints) and DESIGN.md (architecture)._
 
 ## Phase 1 — Analysis + Foundations (done)
@@ -181,6 +181,36 @@ true holdout and the tuning era, and it survives doubled costs. But the edge is
 fat-tailed (three trades carry each period), Sharpe is low, and train-window
 selection remains unusable. It is a paper-trading candidate, not a
 real-capital strategy.
+
+### Cross-asset holdout (BTC)
+
+The same fixed configs on BTC/USDT over the same 5-year span, with no
+BTC-specific tuning. Columns are total R, trades, and profit factor.
+
+| Year | Buy & hold | 1x/2R | 2x/3R |
+| --- | ---: | ---: | ---: |
+| 2021 (partial) | -25.7% | -0.7 (11, 0.89) | +1.0 (6, 1.40) |
+| 2022 | -64.7% | -4.7 (62, 0.88) | -0.8 (37, 0.95) |
+| 2023 | +155.8% | +16.3 (95, 1.28) | +13.6 (36, 1.84) |
+| 2024 | +121.1% | +8.5 (119, 1.11) | +12.3 (40, 1.68) |
+| 2025 | -6.6% | +6.9 (91, 1.12) | -3.5 (47, 0.86) |
+| 2026 (partial) | -5.5% | -14.4 (105, 0.82) | +1.9 (33, 1.10) |
+
+- 2x/3R 5y: +25.3% (CAGR 4.62%, Sharpe 0.56, max DD -10.6%, PF 1.22,
+  199 trades) vs BTC buy & hold +33.5% with much larger drawdown.
+- 2x/3R holdout: +29.3R over 111 trades, +0.264R/trade, PF 1.64; tuning era
+  -4.7R over 88 trades, PF 0.90.
+- 1x/2R 5y: +6.6%, PF 1.02; holdout +20.0R, tuning era -8.2R.
+- Costs (5y, 2x/3R): +49.6% gross → +25.3% base → +13.0% at 2x costs.
+- Concentration: top 3 trades are 45% of the 5y net (below ETH's 59%).
+- Combined ETH+BTC at 1% risk each: +37.0R in the holdout, +5.8R in the tuning
+  era; 2025 -1.4R, 2026 +8.9R.
+
+The 2x/3R config is positive over 5 years on both assets and survives doubled
+costs, and its BTC holdout is stronger than ETH's. But recent periods diverge
+(ETH +10.5R, BTC -4.7R), so the edge is regime-dependent. The 1x/2R config
+fails on at least one asset in each period. 2x/3R is the only config worth
+paper trading.
 
 ## Phase 3 — Paper Trading
 

@@ -175,6 +175,13 @@ def test_backtest_runs_offline():
     assert 0.0 <= m["win_rate"] <= 1.0
 
 
+def test_backtest_symbol_override_offline():
+    result = run_backtest(
+        df=_df(), days=30, use_mtf=False, symbol="BTC/USDT"
+    )
+    assert result["symbol"] == "BTC/USDT"
+
+
 def test_backtest_limit_mode_runs_offline():
     result = run_backtest(
         df=_df(), days=30, use_mtf=False, entry_mode="limit", limit_bars=5

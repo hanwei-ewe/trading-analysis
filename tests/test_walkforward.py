@@ -61,6 +61,7 @@ def test_summarize_trades_uses_entry_window():
 def test_walk_forward_runs_offline():
     result = run_walk_forward(
         timeframe="1h",
+        symbol="BTC/USDT",
         days=65,
         train_days=10,
         test_days=10,
@@ -71,6 +72,7 @@ def test_walk_forward_runs_offline():
         target_rs=(2.0,),
         df=_df(),
     )
+    assert result["symbol"] == "BTC/USDT"
     assert len(result["folds"]) == 4
     assert result["oos"]["trades"] >= 0
     assert result["fixed_1x_2r"]["trades"] >= 0
