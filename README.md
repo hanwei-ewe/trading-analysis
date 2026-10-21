@@ -88,10 +88,14 @@ selection, and a hard 1d filter mostly reduced activity rather than improving
 the edge. Widening the stop (1.5-2x) and targeting 3R removed most of the cost
 drag and moved 4h positive in-sample, but the result is trade-concentrated.
 
-Walk-forward over 3 years (4h, 180d train / 90d test) found **no robust edge**:
-train-window parameter selection was unstable (+4.5R OOS, PF 1.03), while the
-fixed 4h 2x/3R config made +11.5R (PF 1.19) but mostly in the recent year.
-The fixed 1x/2R baseline was consistently marginal (~+0.03R/trade).
+Walk-forward over 3 years (4h, 180d train / 90d test) showed **unstable**
+parameter selection (+4.5R OOS, PF 1.03): train-window R is a noisy selector,
+and the fixed 1x/2R baseline was marginal (+0.045R/trade, PF 1.07). A 5-year
+holdout changed the picture for the fixed **4h 2x/3R** config: +7.7R before the
+tuning period and +10.5R during it (PF 1.13/1.21); over 5 years it made +17.3%
+(CAGR 3.25%, Sharpe 0.38, max DD -12.1%) and survived doubled costs. The
+original 1x/2R lost -17.3% over 5 years. The 2x/3R edge is fat-tailed and
+concentrated, so it is a paper-trading candidate, not a real-capital strategy.
 
 ## API
 

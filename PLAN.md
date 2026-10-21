@@ -1,6 +1,6 @@
 # PLAN.md — Roadmap
 
-_Version 2.5 — 2026-10-19._
+_Version 2.6 — 2026-10-19._
 _Companion to RULES.md (constraints) and DESIGN.md (architecture)._
 
 ## Phase 1 — Analysis + Foundations (done)
@@ -149,10 +149,38 @@ total R with at least 5 train trades, then score that combo on the next unseen
 - Split at 2025-10: 2.0x/3R +1.9R over 64 trades before, +8.7R over 38 after;
   1.0x/2R +4.7R over 170 before, +5.0R over 118 after.
 
-No robust edge: selection by train total R is unstable and underperforms the
-fixed wide-stop config; 2x/3R's PF is carried by the recent year, while the
-1x/2R baseline is consistently marginal (~+0.03R/trade). Do not advance to
-paper trading on this evidence.
+Selection by train total R has no edge: it is unstable and underperforms both
+fixed configs. The fixed 2x/3R config is the exception (next section).
+
+### Long-history holdout
+
+Fixed configs over 1825 days (2021-10-21 → 2026-10-20), split by year. The
+period before 2024-10 was never used during tuning, so it is a true holdout.
+Columns are total R, trades, and profit factor.
+
+| Year | Buy & hold | 1x/2R | 2x/3R |
+| --- | ---: | ---: | ---: |
+| 2021 (partial) | -9.3% | +0.5 (17, 1.05) | -1.8 (9, 0.62) |
+| 2022 | -67.9% | -4.1 (67, 0.90) | +2.9 (34, 1.22) |
+| 2023 | +91.1% | -20.9 (123, 0.78) | 0.0 (38, 1.00) |
+| 2024 | +46.8% | +2.9 (153, 1.03) | +8.0 (50, 1.31) |
+| 2025 | -11.4% | +7.0 (132, 1.08) | +2.1 (49, 1.07) |
+| 2026 (partial) | -17.8% | +2.1 (111, 1.03) | +7.0 (31, 1.44) |
+
+- 2x/3R holdout: +7.7R over 121 trades, +0.064R/trade, PF 1.13.
+- 2x/3R tuning era: +10.5R over 90 trades, +0.116R/trade, PF 1.21.
+- 1x/2R holdout: -23.7R over 323 trades, PF 0.90; tuning era +11.1R, PF 1.06.
+- 5y: 2x/3R +17.3% (CAGR 3.25%, Sharpe 0.38, max DD -12.1%, PF 1.15);
+  1x/2R -17.3% (max DD -33.0%, PF 0.95); buy & hold -39.6%.
+- Costs (5y, 2x/3R): +31.5% gross → +17.3% base → +6.5% at 2x costs.
+- Concentration (2x/3R): the top 3 trades are 59% of the 5y net and roughly
+  9.4R of the +7.7R holdout, so without them the holdout is about -1.7R.
+
+The fixed 2x/3R config is the first to show positive expectancy in both the
+true holdout and the tuning era, and it survives doubled costs. But the edge is
+fat-tailed (three trades carry each period), Sharpe is low, and train-window
+selection remains unusable. It is a paper-trading candidate, not a
+real-capital strategy.
 
 ## Phase 3 — Paper Trading
 
