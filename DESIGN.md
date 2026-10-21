@@ -1,6 +1,6 @@
 # DESIGN.md — Trading Analysis Agent
 
-_Architecture, method, and conventions. Version 2.2 — 2026-10-19._
+_Architecture, method, and conventions. Version 2.5 — 2026-10-19._
 _Companion to RULES.md (constraints) and PLAN.md (roadmap)._
 
 ## 1. Broker & Data Source
@@ -247,15 +247,28 @@ Implementation notes (first slice):
   `analyze(..., at=i)` evaluates a single closed bar.
 - Higher-timeframe checks are aligned with `merge_asof` on candle **close**
   times, so a primary bar only sees HTF bars that have already closed.
-- Execution: signal on a closed bar → market fill at the next bar's open;
-  structural stop from the proposal; target either the proposal T1 or
-  `min_rr × risk` from the fill (`--target`); one position at a time; optional
-  reverse on an opposite bias.
+- Execution: signal on a closed bar → entry either at the next bar's open
+  (`--entry market`) or via a limit at the proposal zone midpoint that stays
+  valid for `--limit-bars` bars (`--entry limit`); structural stop from the
+  proposal; target either the proposal T1 or `min_rr × risk` from the fill
+  (`--target`); one position at a time; optional reverse on an opposite bias.
+  On the entry bar of a limit fill, only the stop is evaluated (the target may
+  have occurred before the intrabar fill).
+- Optional hard regime gate (`--regime-filter aligned|loose`): `aligned` takes
+  only signals matching the higher-timeframe regime bias, `loose` blocks only
+  opposite signals; the filter uses the regime known at the signal bar, so it
+  adds no look-ahead.
+- Optional stop/target scaling: `--stop-mult` multiplies the structural stop
+  distance from the fill (0.75 tighter, 2.0 wider) and `--target-r` fixes the
+  target at an R-multiple of the adjusted risk, overriding `--target`. Both are
+  applied at fill time from the signal and fill prices only.
 - Sizing: `max_risk_pct` of current equity per trade, notional capped at equity.
 - Costs: taker fee + slippage on both legs (configurable on the CLI).
 - Outputs: `results/backtest_*` JSON + Markdown + equity/trade CSVs.
 - CLI: `python -m src.backtest --timeframe 1h --days 365`
-  `[--checks default|all|ids] [--target proposal|rr] [--no-mtf]`.
+  `[--checks default|all|ids] [--entry market|limit] [--limit-bars N]`
+  `[--target proposal|rr] [--regime-filter none|aligned|loose]`
+  `[--stop-mult X] [--target-r R] [--no-mtf]`.
 
 ## 9. Execution Path (deferred)
 

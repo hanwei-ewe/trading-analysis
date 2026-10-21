@@ -9,12 +9,17 @@ import pandas as pd
 from src.analysis import analyze
 from src.backtest import (
     ALL_CHECKS,
+    _adjust_stop,
     _align_bias,
     _exit_check,
     _fill,
+    _limit_fill,
     _parse_checks,
     _pivot_schedule,
     _prep,
+    _regime_allows,
+    _regime_map,
+    _target_price,
     run_backtest,
 )
 from src.config import load_config
@@ -22,9 +27,9 @@ from src.config import load_config
 CFG = load_config()
 
 
-def _df(n=1500, freq="h", seed=3):
+def _df(n=1500, freq="h", seed=3, start="2024-01-01"):
     rng = np.random.default_rng(seed)
-    idx = pd.date_range("2024-01-01", periods=n, freq=freq, tz="UTC")
+    idx = pd.date_range(start, periods=n, freq=freq, tz="UTC")
     trend = np.sin(np.arange(n) / 90.0) * 8.0 + np.arange(n) * 0.01
     close = 100.0 + trend + rng.normal(0.0, 1.0, n)
     return pd.DataFrame(
@@ -116,6 +121,21 @@ def test_stop_wins_when_both_levels_hit():
     assert raw == 105.0 and reason == "stop"
 
 
+def test_limit_fill_prices():
+    assert _limit_fill("LONG", 100.0, 101.0, 102.0, 99.0) == 100.0
+    assert _limit_fill("LONG", 100.0, 99.0, 102.0, 98.0) == 99.0
+    assert _limit_fill("LONG", 100.0, 101.0, 102.0, 100.5) is None
+    assert _limit_fill("SHORT", 100.0, 99.0, 101.0, 98.0) == 100.0
+    assert _limit_fill("SHORT", 100.0, 101.0, 102.0, 99.0) == 101.0
+    assert _limit_fill("SHORT", 100.0, 99.0, 99.5, 98.0) is None
+
+
+def test_entry_bar_can_ignore_target():
+    pos = {"side": "LONG", "stop": 95.0, "target": 105.0}
+    raw, reason = _exit_check(pos, 100.0, 110.0, 99.0, target_ok=False)
+    assert raw is None and reason is None
+
+
 def test_at_index_matches_sliced_frame():
     df = _df(n=400)
     ind = _prep(df, CFG)
@@ -155,11 +175,103 @@ def test_backtest_runs_offline():
     assert 0.0 <= m["win_rate"] <= 1.0
 
 
+def test_backtest_limit_mode_runs_offline():
+    result = run_backtest(
+        df=_df(), days=30, use_mtf=False, entry_mode="limit", limit_bars=5
+    )
+    assert result["entry_mode"] == "limit"
+    assert result["limit_bars"] == 5
+    assert result["metrics"]["trades"] == len(result["trades"])
+
+
+def test_adjust_stop_scales_distance():
+    assert _adjust_stop("LONG", 100.0, 95.0, 1.0) == 95.0
+    assert _adjust_stop("LONG", 100.0, 95.0, 1.5) == 92.5
+    assert _adjust_stop("SHORT", 100.0, 105.0, 1.5) == 107.5
+
+
+def test_target_r_overrides_proposal_and_rr():
+    assert _target_price("LONG", 100.0, 95.0, 110.0, CFG, "proposal", 3.0) == 115.0
+    assert (
+        _target_price("SHORT", 100.0, 105.0, 90.0, CFG, "proposal", 3.0) == 85.0
+    )
+    rr = float(CFG["risk"]["min_rr"])
+    assert _target_price("LONG", 100.0, 95.0, 0.0, CFG, "rr", None) == 100.0 + rr * 5.0
+
+
+def test_backtest_stop_and_target_overrides_offline():
+    result = run_backtest(
+        df=_df(), days=30, use_mtf=False, stop_mult=1.5, target_r=3.0
+    )
+    assert result["stop_mult"] == 1.5
+    assert result["target_r"] == 3.0
+    assert result["metrics"]["trades"] == len(result["trades"])
+
+
+def test_backtest_rejects_bad_stop_and_target():
+    for kwargs in ({"stop_mult": 0}, {"target_r": 0}):
+        try:
+            run_backtest(df=_df(), days=5, use_mtf=False, **kwargs)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{kwargs} should raise")
+
+
+def test_regime_filter_rules():
+    checks = {
+        0: [{"id": "htf_1d", "vote": 1}],
+        1: [{"id": "htf_1d", "vote": -1}],
+        2: [{"id": "htf_1d", "vote": 0}],
+    }
+    mapped = _regime_map(checks, "1d")
+    assert mapped == {0: "LONG", 1: "SHORT", 2: "NEUTRAL-FLAT"}
+
+    assert _regime_allows("LONG", "LONG", "aligned")
+    assert not _regime_allows("SHORT", "LONG", "aligned")
+    assert not _regime_allows("NEUTRAL-FLAT", "LONG", "aligned")
+    assert _regime_allows("NEUTRAL-FLAT", "LONG", "loose")
+    assert not _regime_allows("SHORT", "LONG", "loose")
+    assert _regime_allows(None, "LONG", "none")
+    assert not _regime_allows(None, "LONG", "aligned")
+
+
+def test_regime_filter_requires_mtf():
+    try:
+        run_backtest(
+            df=_df(),
+            days=30,
+            use_mtf=False,
+            regime_filter="aligned",
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("regime filter without MTF should raise")
+
+
+def test_backtest_regime_filter_runs_offline():
+    df = _df()
+    htf = {
+        "4h": _df(n=400, freq="4h", seed=4),
+        "1d": _df(n=600, freq="D", seed=5, start="2023-01-01"),
+    }
+    result = run_backtest(
+        df=df,
+        days=30,
+        use_mtf=True,
+        htf_dfs=htf,
+        regime_filter="aligned",
+    )
+    assert result["regime_filter"] == "aligned"
+    assert result["metrics"]["trades"] == len(result["trades"])
+
+
 def test_backtest_includes_higher_frames_offline():
     df = _df()
     htf = {
         "4h": _df(n=400, freq="4h", seed=4),
-        "1d": _df(n=300, freq="D", seed=5),
+        "1d": _df(n=600, freq="D", seed=5, start="2023-01-01"),
     }
     result = run_backtest(df=df, days=30, use_mtf=True, htf_dfs=htf)
     assert set(result["htf_frames"]) == {"4h", "1d"}

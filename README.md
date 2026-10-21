@@ -70,15 +70,22 @@ closed bars, market fills at the next bar's open):
 ```bash
 ./dev.sh python -m src.backtest --timeframe 1h --days 365
 ./dev.sh python -m src.backtest --timeframe 4h --days 365 --target rr
+./dev.sh python -m src.backtest --timeframe 1h --days 365 --entry limit --limit-bars 5
 ```
 
-Options: `--checks default|all|rsi,macd,...`, `--target proposal|rr`,
-`--no-mtf`, `--days`, `--equity`, `--fee`, `--slippage`, `--no-cache`.
+Options: `--checks default|all|rsi,macd,...`, `--entry market|limit`,
+`--limit-bars`, `--target proposal|rr`, `--regime-filter none|aligned|loose`,
+`--stop-mult`, `--target-r`, `--no-mtf`, `--days`, `--equity`, `--fee`,
+`--slippage`, `--no-cache`.
 
 Each run writes JSON + Markdown + equity/trade CSVs to `results/` (gitignored)
 and prints the summary. The first 365-day validation is recorded in `PLAN.md`
-(Phase 2): MTF helped, but market entries after a pullback proposal produced
-sub-2R fills and costs erased the edge; 4h was closest to breakeven.
+(Phase 2): MTF helped materially, but market entries after a pullback proposal
+produced sub-2R fills; limit entries into the zone **hurt** via adverse
+selection, and a hard 1d filter mostly reduced activity rather than improving
+the edge. Widening the stop (1.5-2x) and targeting 3R removed most of the cost
+drag and moved 4h positive in-sample, but the result is trade-concentrated and
+still needs walk-forward validation.
 
 ## API
 

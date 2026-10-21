@@ -203,13 +203,39 @@ def _htf_check_map(primary_ind, cfg, active, frames, primary_tf):
     return {i: checks for i, checks in out.items() if checks}
 
 
+def _regime_map(htf_by_pos, regime_tf):
+    key = f"htf_{regime_tf}"
+    out = {}
+    for i, checks in htf_by_pos.items():
+        for check in checks:
+            if check["id"] == key:
+                if check["vote"] > 0:
+                    out[i] = "LONG"
+                elif check["vote"] < 0:
+                    out[i] = "SHORT"
+                else:
+                    out[i] = "NEUTRAL-FLAT"
+                break
+    return out
+
+
+def _regime_allows(regime_bias, side, mode):
+    if mode == "none":
+        return True
+    if regime_bias is None:
+        return False
+    if mode == "loose":
+        return regime_bias == "NEUTRAL-FLAT" or regime_bias == side
+    return regime_bias == side
+
+
 def _fill(raw, side, slippage, entering):
     if entering:
         return raw * (1.0 + slippage) if side == "LONG" else raw * (1.0 - slippage)
     return raw * (1.0 - slippage) if side == "LONG" else raw * (1.0 + slippage)
 
 
-def _exit_check(position, bar_open, bar_high, bar_low):
+def _exit_check(position, bar_open, bar_high, bar_low, target_ok=True):
     side = position["side"]
     stop = position["stop"]
     target = position["target"]
@@ -218,20 +244,49 @@ def _exit_check(position, bar_open, bar_high, bar_low):
             return bar_open, "stop"
         if bar_low <= stop:
             return stop, "stop"
-        if bar_open >= target:
-            return bar_open, "target"
-        if bar_high >= target:
-            return target, "target"
+        if target_ok:
+            if bar_open >= target:
+                return bar_open, "target"
+            if bar_high >= target:
+                return target, "target"
     else:
         if bar_open >= stop:
             return bar_open, "stop"
         if bar_high >= stop:
             return stop, "stop"
-        if bar_open <= target:
-            return bar_open, "target"
-        if bar_low <= target:
-            return target, "target"
+        if target_ok:
+            if bar_open <= target:
+                return bar_open, "target"
+            if bar_low <= target:
+                return target, "target"
     return None, None
+
+
+def _limit_fill(side, limit, bar_open, bar_high, bar_low):
+    if side == "LONG":
+        if bar_low <= limit:
+            return min(bar_open, limit)
+    else:
+        if bar_high >= limit:
+            return max(bar_open, limit)
+    return None
+
+
+def _target_price(side, entry, stop, proposal_t1, cfg, target_mode, target_r=None):
+    if target_r is not None:
+        rr = float(target_r)
+    elif target_mode == "rr":
+        rr = float(cfg["risk"]["min_rr"])
+    else:
+        return float(proposal_t1)
+    risk = abs(entry - stop)
+    return entry + rr * risk if side == "LONG" else entry - rr * risk
+
+
+def _adjust_stop(side, entry, stop, mult):
+    if side == "LONG":
+        return entry - float(mult) * (entry - stop)
+    return entry + float(mult) * (stop - entry)
 
 
 def _close(position, raw_exit, exit_time, exit_index, equity, fee_rate, slippage, reason):
@@ -272,6 +327,12 @@ def _run_engine(
     fee_rate,
     slippage,
     target_mode="proposal",
+    entry_mode="market",
+    limit_bars=5,
+    regime_bias=None,
+    regime_filter="none",
+    stop_mult=1.0,
+    target_r=None,
 ):
     n = len(ind)
     warm = _warmup_bars(cfg)
@@ -284,6 +345,7 @@ def _run_engine(
     by_pos = {i: res for i, res in results}
     equity = float(initial_equity)
     position = None
+    pending = None
     prev_bias = None
     prev_signal = None
     trades = []
@@ -296,57 +358,149 @@ def _run_engine(
         bar_high = float(ind["high"].iloc[i])
         bar_low = float(ind["low"].iloc[i])
         bar_close = float(ind["close"].iloc[i])
-
-        if (
-            position is not None
-            and prev_bias in ("LONG", "SHORT")
-            and prev_bias != position["side"]
-        ):
-            equity, trade = _close(
-                position, bar_open, ts, i, equity, fee_rate, slippage, "signal"
-            )
-            trades.append(trade)
-            position = None
-
-        if position is None and prev_signal is not None:
-            side = prev_signal["direction"]
-            stop = float(prev_signal["stop"])
-            entry = _fill(bar_open, side, slippage, entering=True)
-            risk_per_unit = abs(entry - stop)
-            if target_mode == "rr":
-                rr = float(cfg["risk"]["min_rr"])
-                target = (
-                    entry + rr * risk_per_unit
-                    if side == "LONG"
-                    else entry - rr * risk_per_unit
-                )
-                valid = entry > stop if side == "LONG" else entry < stop
-            else:
-                target = float(prev_signal["t1"])
-                valid = (
-                    stop < bar_open < target
-                    if side == "LONG"
-                    else target < bar_open < stop
-                )
-            if valid and risk_per_unit > 0:
-                risk_amount = equity * float(cfg["risk"]["max_risk_pct"]) / 100.0
-                units = min(risk_amount / risk_per_unit, equity / entry)
-                if units > 0:
-                    position = {
-                        "side": side,
-                        "entry": entry,
-                        "stop": stop,
-                        "target": target,
-                        "units": units,
-                        "risk": units * risk_per_unit,
-                        "entry_time": ts,
-                        "entry_index": i,
-                        "score": prev_signal.get("_score"),
-                        "confidence": prev_signal.get("_confidence"),
-                    }
+        exited_this_bar = False
+        entered_this_bar = False
+        target_ok = True
 
         if position is not None:
-            raw_exit, reason = _exit_check(position, bar_open, bar_high, bar_low)
+            if (
+                prev_bias in ("LONG", "SHORT")
+                and prev_bias != position["side"]
+            ):
+                equity, trade = _close(
+                    position, bar_open, ts, i, equity, fee_rate, slippage, "signal"
+                )
+                trades.append(trade)
+                position = None
+                pending = None
+                exited_this_bar = True
+            else:
+                raw_exit, reason = _exit_check(
+                    position, bar_open, bar_high, bar_low
+                )
+                if raw_exit is not None:
+                    equity, trade = _close(
+                        position,
+                        raw_exit,
+                        ts,
+                        i,
+                        equity,
+                        fee_rate,
+                        slippage,
+                        reason,
+                    )
+                    trades.append(trade)
+                    position = None
+                    exited_this_bar = True
+
+        if position is None and not exited_this_bar:
+            if entry_mode == "limit":
+                if (
+                    pending is not None
+                    and prev_bias in ("LONG", "SHORT")
+                    and prev_bias != pending["side"]
+                ):
+                    pending = None
+                if pending is not None and i > pending["expires_index"]:
+                    pending = None
+                if pending is not None:
+                    side = pending["side"]
+                    original_stop = pending["stop"]
+                    fill_raw = _limit_fill(
+                        side, pending["limit"], bar_open, bar_high, bar_low
+                    )
+                    if fill_raw is not None:
+                        entry = _fill(fill_raw, side, slippage, entering=True)
+                        stop = _adjust_stop(
+                            side, entry, original_stop, stop_mult
+                        )
+                        risk_per_unit = abs(entry - stop)
+                        valid = (
+                            entry > stop if side == "LONG" else entry < stop
+                        )
+                        if valid and risk_per_unit > 0:
+                            target = _target_price(
+                                side,
+                                entry,
+                                stop,
+                                pending["t1"],
+                                cfg,
+                                target_mode,
+                                target_r,
+                            )
+                            risk_amount = (
+                                equity
+                                * float(cfg["risk"]["max_risk_pct"])
+                                / 100.0
+                            )
+                            units = min(
+                                risk_amount / risk_per_unit, equity / entry
+                            )
+                            if units > 0:
+                                position = {
+                                    "side": side,
+                                    "entry": entry,
+                                    "stop": stop,
+                                    "target": target,
+                                    "units": units,
+                                    "risk": units * risk_per_unit,
+                                    "entry_time": ts,
+                                    "entry_index": i,
+                                    "score": pending["score"],
+                                    "confidence": pending["confidence"],
+                                }
+                                entered_this_bar = True
+                                target_ok = fill_raw == bar_open
+                        pending = None
+            elif prev_signal is not None:
+                side = prev_signal["direction"]
+                original_stop = float(prev_signal["stop"])
+                entry = _fill(bar_open, side, slippage, entering=True)
+                stop = _adjust_stop(side, entry, original_stop, stop_mult)
+                risk_per_unit = abs(entry - stop)
+                target = _target_price(
+                    side,
+                    entry,
+                    stop,
+                    prev_signal["t1"],
+                    cfg,
+                    target_mode,
+                    target_r,
+                )
+                if target_mode == "rr" or target_r is not None:
+                    valid = (
+                        entry > stop if side == "LONG" else entry < stop
+                    )
+                else:
+                    valid = (
+                        original_stop < bar_open < target
+                        if side == "LONG"
+                        else target < bar_open < original_stop
+                    )
+                if valid and risk_per_unit > 0:
+                    risk_amount = (
+                        equity * float(cfg["risk"]["max_risk_pct"]) / 100.0
+                    )
+                    units = min(risk_amount / risk_per_unit, equity / entry)
+                    if units > 0:
+                        position = {
+                            "side": side,
+                            "entry": entry,
+                            "stop": stop,
+                            "target": target,
+                            "units": units,
+                            "risk": units * risk_per_unit,
+                            "entry_time": ts,
+                            "entry_index": i,
+                            "score": prev_signal.get("_score"),
+                            "confidence": prev_signal.get("_confidence"),
+                        }
+                        entered_this_bar = True
+
+        if entered_this_bar and position is not None:
+            raw_exit, reason = _exit_check(
+                position, bar_open, bar_high, bar_low, target_ok
+            )
             if raw_exit is not None:
                 equity, trade = _close(
                     position, raw_exit, ts, i, equity, fee_rate, slippage, reason
@@ -372,11 +526,48 @@ def _run_engine(
         else:
             prev_bias = res["bias"]
             if res["bias"] in ("LONG", "SHORT") and res["signal"]:
-                prev_signal = dict(res["signal"])
-                prev_signal["_score"] = res["score"]
-                prev_signal["_confidence"] = res["confidence"]
+                candidate = dict(res["signal"])
+                candidate["_score"] = res["score"]
+                candidate["_confidence"] = res["confidence"]
+                allowed = _regime_allows(
+                    (regime_bias or {}).get(i),
+                    candidate["direction"],
+                    regime_filter,
+                )
+                prev_signal = candidate if allowed else None
+                if entry_mode == "limit" and position is None:
+                    if pending is not None and (
+                        pending["side"] != candidate["direction"]
+                        or not _regime_allows(
+                            (regime_bias or {}).get(i),
+                            pending["side"],
+                            regime_filter,
+                        )
+                    ):
+                        pending = None
+                    if pending is None and allowed:
+                        limit = (
+                            float(candidate["entry_low"])
+                            + float(candidate["entry_high"])
+                        ) / 2.0
+                        pending = {
+                            "side": candidate["direction"],
+                            "limit": limit,
+                            "stop": float(candidate["stop"]),
+                            "t1": float(candidate["t1"]),
+                            "expires_index": i + int(limit_bars),
+                            "score": res["score"],
+                            "confidence": res["confidence"],
+                        }
             else:
                 prev_signal = None
+                if entry_mode == "limit" and pending is not None:
+                    if not _regime_allows(
+                        (regime_bias or {}).get(i),
+                        pending["side"],
+                        regime_filter,
+                    ):
+                        pending = None
 
     if position is not None:
         last = n - 1
@@ -488,10 +679,19 @@ def run_backtest(
     use_cache=True,
     use_mtf=True,
     target_mode="proposal",
+    entry_mode="market",
+    limit_bars=5,
+    regime_filter="none",
+    stop_mult=1.0,
+    target_r=None,
     adapter=None,
     df=None,
     htf_dfs=None,
 ):
+    if float(stop_mult) <= 0:
+        raise ValueError("stop_mult must be > 0")
+    if target_r is not None and float(target_r) <= 0:
+        raise ValueError("target_r must be > 0")
     cfg = load_config(config_path)
     pair = cfg["universe"]["pair"]
     tf = timeframe or cfg["timeframes"]["primary"]
@@ -541,6 +741,16 @@ def run_backtest(
         if htf_frames
         else {}
     )
+    regime_bias = {}
+    if regime_filter != "none":
+        if not use_mtf:
+            raise ValueError("regime filter requires MTF; remove --no-mtf")
+        regime_bias = _regime_map(htf_by_pos, cfg["timeframes"]["regime"])
+        if not regime_bias:
+            raise ValueError(
+                "regime filter needs a higher regime frame; "
+                "use a lower primary timeframe"
+            )
     results = _evaluate_frame(primary_ind, cfg, active, tf, htf_by_pos)
 
     window_start = primary_ind.index[-1] - pd.Timedelta(days=days)
@@ -557,6 +767,12 @@ def run_backtest(
         float(fee),
         float(slippage),
         target_mode=target_mode,
+        entry_mode=entry_mode,
+        limit_bars=limit_bars,
+        regime_bias=regime_bias,
+        regime_filter=regime_filter,
+        stop_mult=stop_mult,
+        target_r=target_r,
     )
     start_idx = engine["start_index"]
     metrics = _metrics(
@@ -571,6 +787,11 @@ def run_backtest(
         "fee": float(fee),
         "slippage": float(slippage),
         "target_mode": target_mode,
+        "entry_mode": entry_mode,
+        "limit_bars": int(limit_bars),
+        "regime_filter": regime_filter,
+        "stop_mult": float(stop_mult),
+        "target_r": None if target_r is None else float(target_r),
         "metrics": metrics,
         "trades": engine["trades"],
         "equity_curve": engine["equity_curve"],
@@ -600,7 +821,21 @@ def to_markdown(result):
         f"- Higher frames: {', '.join(result['htf_frames']) or 'none'}",
         f"- Costs: {result['fee'] * 100:.3f}% fee, "
         f"{result['slippage'] * 100:.3f}% slippage",
-        f"- Target: {'2R from fill' if result.get('target_mode') == 'rr' else 'proposal T1'}",
+        f"- Target: {result['target_r']}R"
+        if result.get("target_r") is not None
+        else (
+            "2R from fill"
+            if result.get("target_mode") == "rr"
+            else "proposal T1"
+        ),
+        f"- Stop width: {result.get('stop_mult', 1.0)}x structural",
+        f"- Entry: {'limit at zone mid' if result.get('entry_mode') == 'limit' else 'market at next open'}"
+        + (
+            f" (valid {result['limit_bars']} bars)"
+            if result.get("entry_mode") == "limit"
+            else ""
+        ),
+        f"- Regime filter: {result.get('regime_filter', 'none')}",
         "",
         "## Performance",
         "",
@@ -668,6 +903,15 @@ def main(argv=None):
     parser.add_argument("--no-mtf", action="store_true")
     parser.add_argument("--no-cache", action="store_true")
     parser.add_argument("--target", choices=("proposal", "rr"), default="proposal")
+    parser.add_argument("--entry", choices=("market", "limit"), default="market")
+    parser.add_argument("--limit-bars", type=int, default=5)
+    parser.add_argument(
+        "--regime-filter", choices=("none", "aligned", "loose"), default="none"
+    )
+    parser.add_argument("--stop-mult", type=float, default=1.0,
+                        help="scale structural stop distance (1 = as proposed)")
+    parser.add_argument("--target-r", type=float, default=None,
+                        help="fixed R-multiple target from fill; overrides --target")
     args = parser.parse_args(argv)
 
     result = run_backtest(
@@ -681,6 +925,11 @@ def main(argv=None):
         use_cache=not args.no_cache,
         use_mtf=not args.no_mtf,
         target_mode=args.target,
+        entry_mode=args.entry,
+        limit_bars=args.limit_bars,
+        regime_filter=args.regime_filter,
+        stop_mult=args.stop_mult,
+        target_r=args.target_r,
     )
     paths = save_results(result, args.config)
     print(to_markdown(result))

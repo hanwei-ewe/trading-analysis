@@ -1,6 +1,6 @@
 # PLAN.md — Roadmap
 
-_Version 2.1 — 2026-10-19._
+_Version 2.4 — 2026-10-19._
 _Companion to RULES.md (constraints) and DESIGN.md (architecture)._
 
 ## Phase 1 — Analysis + Foundations (done)
@@ -63,20 +63,64 @@ Milestones:
 - Deliverable: author a strategy, backtest it, review results in the UI — no
   live trading.
 
-First validation (365 days ending 2026-10-19, default 5 checks + MTF, 1% risk,
-0.10% fee + 0.05% slippage, market entry at next open):
+First validation (365 days ending 2026-10-20, default 5 checks, 1% risk,
+0.10% fee + 0.05% slippage). Buy & hold over the window: **-38.5%**.
 
-| Frame | Return | Buy & hold | Sharpe | Max DD | Trades | Win | PF |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1h, proposal T1 | -50.8% | -38.2% | -3.23 | -52.1% | 337 | 40.9% | 0.70 |
-| 1h, 2R target | -40.0% | -38.2% | -2.17 | -42.5% | 281 | 33.8% | 0.77 |
-| 4h, proposal T1 | -4.1% | -38.3% | -0.34 | -10.4% | 89 | 44.9% | 0.92 |
-| 4h, 2R target | -6.8% | -38.3% | -0.58 | -13.4% | 74 | 35.1% | 0.86 |
+| Experiment | Return | Sharpe | Max DD | Trades | Win | PF |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1h, market, T1 | -49.1% | -3.08 | -52.2% | 330 | 41.2% | 0.71 |
+| 1h, market, 2R | -36.7% | -1.95 | -42.6% | 277 | 34.3% | 0.80 |
+| 1h, limit 5, T1 | -51.9% | -3.18 | -53.6% | 295 | 33.6% | 0.68 |
+| 1h, market, T1, 1d aligned | -40.2% | -2.80 | -43.7% | 225 | 40.0% | 0.68 |
+| 1h, limit 5, T1, 1d aligned | -42.3% | -2.82 | -44.9% | 198 | 32.3% | 0.65 |
+| 4h, market, T1 | -3.6% | -0.30 | -10.8% | 85 | 44.7% | 0.93 |
+| 4h, market, 2R | -2.6% | -0.19 | -12.5% | 65 | 35.4% | 0.94 |
+| 4h, market, T1, 1d aligned | -6.6% | -0.65 | -11.8% | 69 | 42.0% | 0.84 |
+| 4h, limit 5, T1, 1d aligned | -8.3% | -0.77 | -15.5% | 62 | 32.3% | 0.80 |
 
-Finding: MTF materially improved 1h (no-MTF was -87.3%), but the market entry
-after a pullback proposal yields sub-2R fills and costs erase the remaining
-edge. Next experiments: limit entries at the proposal zone, regime filters,
-and 4h/1d walk-forward.
+Findings:
+- MTF materially improved 1h (no-MTF: -86.3%, 775 trades) and cut 4h churn
+  (152 → 85 trades).
+- Market entries after a pullback proposal produce sub-2R fills; a 2R-from-fill
+  target is the most consistent improvement, but does not create an edge.
+- Limit entries at the zone midpoint **hurt**: fills only happen when the
+  pullback continues against the signal (adverse selection), so win rate fell
+  from ~41-45% to ~32-35%.
+- A hard 1d `aligned` filter cut the 1h loss (-49.1% → -40.2%) mostly by trading
+  less (330 → 225 trades); profit factor fell (0.71 → 0.68). On 4h it made
+  things worse (-3.6% → -6.6%). `loose` was neutral on 4h.
+- 4h market + 2R was the closest to breakeven in the first pass (-2.6%,
+  PF 0.94) but still not a positive expectancy after costs. Next: cost-aware
+  stop/target widths (below), then walk-forward validation.
+
+### Cost-aware stops and targets
+
+Costs are a fixed percent of price, so widening the stop reduces the notional
+needed for the same 1% risk and shrinks costs as a fraction of R. Combining a
+stop multiplier with a fixed R-multiple target (365d, market entry, MTF):
+
+| Frame | Stop | Target | Return | PF | Trades |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1h | 1.0x | 2R | -36.7% | 0.80 | 277 |
+| 1h | 1.5x | 3R | -1.9% | 0.98 | 115 |
+| 1h | 2.0x | 3R | +0.3% | 1.00 | 96 |
+| 4h | 1.0x | 2R | -2.6% | 0.94 | 65 |
+| 4h | 1.0x | 3R | +2.1% | 1.07 | 50 |
+| 4h | 1.5x | 3R | +9.9% | 1.60 | 35 |
+| 4h | 2.0x | 3R | +12.5% | 2.16 | 30 |
+
+Robustness checks:
+- 730d: 4h 2x/3R +7.6% (PF 1.17; halves +0.9% / +6.6%); 4h 1x/3R +5.5%
+  (PF 1.04; halves -1.4% / +6.9%); 1h 2x/3R +10.7% (PF 1.06; halves
+  +10.8% / 0.0%).
+- Concentration: the top 3 trades are 75% of the 4h 2x/3R net over 365d.
+- Costs (365d): 4h 2x/3R +14.0% gross → +12.5% base → +11.3% at 2x costs;
+  4h 1x/3R +7.0% → +2.1% → -1.8%; 1h 2x/3R +21.8% → +0.3% → -9.9%.
+
+Wider stops plus a 3R target is the first configuration to move 4h clearly
+positive (≈+10% to +12.5%), and 4h is the only frame that survives doubled
+costs. The edge is still thin and trade-concentrated (and 1h remains
+cost-sensitive), so it is a candidate for walk-forward, not a validated edge.
 
 ## Phase 3 — Paper Trading
 
