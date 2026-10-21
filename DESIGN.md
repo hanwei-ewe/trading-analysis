@@ -1,6 +1,6 @@
 # DESIGN.md — Trading Analysis Agent
 
-_Architecture, method, and conventions. Version 2.5 — 2026-10-19._
+_Architecture, method, and conventions. Version 2.6 — 2026-10-19._
 _Companion to RULES.md (constraints) and PLAN.md (roadmap)._
 
 ## 1. Broker & Data Source
@@ -262,6 +262,11 @@ Implementation notes (first slice):
   distance from the fill (0.75 tighter, 2.0 wider) and `--target-r` fixes the
   target at an R-multiple of the adjusted risk, overriding `--target`. Both are
   applied at fill time from the signal and fill prices only.
+- Walk-forward (`src/walkforward.py`): rolls disjoint train/test windows,
+  selects `(stop_mult, target_r)` on each train window by total R subject to a
+  minimum trade count, then scores that combo on the next unseen window. Trades
+  are assigned by entry time; the report also shows fixed 1x/2R and 2x/3R
+  baselines over the same test windows.
 - Sizing: `max_risk_pct` of current equity per trade, notional capped at equity.
 - Costs: taker fee + slippage on both legs (configurable on the CLI).
 - Outputs: `results/backtest_*` JSON + Markdown + equity/trade CSVs.
@@ -269,6 +274,8 @@ Implementation notes (first slice):
   `[--checks default|all|ids] [--entry market|limit] [--limit-bars N]`
   `[--target proposal|rr] [--regime-filter none|aligned|loose]`
   `[--stop-mult X] [--target-r R] [--no-mtf]`.
+- Walk-forward CLI: `python -m src.walkforward --timeframe 4h --days 1095`
+  `--train-days 180 --test-days 90 [--step-days N] [--min-train-trades N]`.
 
 ## 9. Execution Path (deferred)
 

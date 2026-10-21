@@ -71,12 +71,14 @@ closed bars, market fills at the next bar's open):
 ./dev.sh python -m src.backtest --timeframe 1h --days 365
 ./dev.sh python -m src.backtest --timeframe 4h --days 365 --target rr
 ./dev.sh python -m src.backtest --timeframe 1h --days 365 --entry limit --limit-bars 5
+./dev.sh python -m src.walkforward --timeframe 4h --days 1095
 ```
 
 Options: `--checks default|all|rsi,macd,...`, `--entry market|limit`,
 `--limit-bars`, `--target proposal|rr`, `--regime-filter none|aligned|loose`,
 `--stop-mult`, `--target-r`, `--no-mtf`, `--days`, `--equity`, `--fee`,
-`--slippage`, `--no-cache`.
+`--slippage`, `--no-cache`. Walk-forward adds `--train-days`, `--test-days`,
+`--step-days`, `--min-train-trades`, and `--json`.
 
 Each run writes JSON + Markdown + equity/trade CSVs to `results/` (gitignored)
 and prints the summary. The first 365-day validation is recorded in `PLAN.md`
@@ -84,8 +86,12 @@ and prints the summary. The first 365-day validation is recorded in `PLAN.md`
 produced sub-2R fills; limit entries into the zone **hurt** via adverse
 selection, and a hard 1d filter mostly reduced activity rather than improving
 the edge. Widening the stop (1.5-2x) and targeting 3R removed most of the cost
-drag and moved 4h positive in-sample, but the result is trade-concentrated and
-still needs walk-forward validation.
+drag and moved 4h positive in-sample, but the result is trade-concentrated.
+
+Walk-forward over 3 years (4h, 180d train / 90d test) found **no robust edge**:
+train-window parameter selection was unstable (+4.5R OOS, PF 1.03), while the
+fixed 4h 2x/3R config made +11.5R (PF 1.19) but mostly in the recent year.
+The fixed 1x/2R baseline was consistently marginal (~+0.03R/trade).
 
 ## API
 

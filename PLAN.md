@@ -1,6 +1,6 @@
 # PLAN.md — Roadmap
 
-_Version 2.4 — 2026-10-19._
+_Version 2.5 — 2026-10-19._
 _Companion to RULES.md (constraints) and DESIGN.md (architecture)._
 
 ## Phase 1 — Analysis + Foundations (done)
@@ -121,6 +121,38 @@ Wider stops plus a 3R target is the first configuration to move 4h clearly
 positive (≈+10% to +12.5%), and 4h is the only frame that survives doubled
 costs. The edge is still thin and trade-concentrated (and 1h remains
 cost-sensitive), so it is a candidate for walk-forward, not a validated edge.
+
+### Walk-forward
+
+Parameter-selection walk-forward on 4h over 1095 days: train 180d, test 90d,
+step 90d; grid of 3 stop multipliers × 3 R targets; select the best train
+total R with at least 5 train trades, then score that combo on the next unseen
+90d. Test windows are disjoint; trades are assigned by entry time.
+
+| Test window | 1x/2R R (n) | 2x/3R R (n) |
+| --- | ---: | ---: |
+| 2024-04-18 → 2024-07-17 | -6.5 (25) | -2.4 (11) |
+| 2024-07-17 → 2024-10-15 | +2.4 (34) | +0.8 (11) |
+| 2024-10-15 → 2025-01-13 | +5.2 (40) | +0.4 (12) |
+| 2025-01-13 → 2025-04-13 | -2.5 (34) | -0.9 (14) |
+| 2025-04-13 → 2025-07-12 | +6.1 (37) | +4.0 (16) |
+| 2025-07-12 → 2025-10-10 | +4.1 (21) | +0.8 (10) |
+| 2025-10-10 → 2026-01-08 | +1.4 (27) | +1.5 (12) |
+| 2026-01-08 → 2026-04-08 | +4.1 (33) | +1.0 (12) |
+| 2026-04-08 → 2026-07-07 | +5.5 (33) | +3.1 (6) |
+| 2026-07-07 → 2026-10-05 | -6.0 (25) | +3.1 (8) |
+
+- Selected OOS: 221 trades, +4.5R, +0.021R/trade, PF 1.03. Selection swung
+  between 1.0x/2R (×4), 1.5x/3R (×3), 1.0x/3R, 1.5x/1.5R, 2.0x/2R.
+- Fixed 1.0x/2R: 309 trades, +13.8R, +0.045R/trade, PF 1.07.
+- Fixed 2.0x/3R: 112 trades, +11.5R, +0.102R/trade, PF 1.19.
+- Split at 2025-10: 2.0x/3R +1.9R over 64 trades before, +8.7R over 38 after;
+  1.0x/2R +4.7R over 170 before, +5.0R over 118 after.
+
+No robust edge: selection by train total R is unstable and underperforms the
+fixed wide-stop config; 2x/3R's PF is carried by the recent year, while the
+1x/2R baseline is consistently marginal (~+0.03R/trade). Do not advance to
+paper trading on this evidence.
 
 ## Phase 3 — Paper Trading
 
