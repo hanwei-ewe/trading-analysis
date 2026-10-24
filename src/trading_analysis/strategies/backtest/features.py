@@ -3,25 +3,14 @@ from collections import defaultdict
 
 import pandas as pd
 
-from ... import indicators as ind_mod
+from ...indicators import add_indicators
 from ...analysis import analyze
 from ...data import parse_timeframe
 from .checks import _warmup_bars
 
 
 def _prep(df, cfg):
-    ind = ind_mod.add_indicators(df, cfg)
-    kp, dp, sp = [int(x) for x in cfg["indicators"].get("stoch", [14, 3, 3])]
-    stoch = ind_mod.stochastic(ind["high"], ind["low"], ind["close"], kp, dp, sp)
-    ind["stoch_k"] = stoch["stoch_k"]
-    ind["stoch_d"] = stoch["stoch_d"]
-    ap = int(cfg["indicators"].get("adx", 14))
-    adx = ind_mod.adx(ind["high"], ind["low"], ind["close"], ap)
-    ind["adx"] = adx["adx"]
-    ind["plus_di"] = adx["plus_di"]
-    ind["minus_di"] = adx["minus_di"]
-    ind["obv"] = ind_mod.obv(ind["close"], ind["volume"])
-    return ind
+    return add_indicators(df, cfg)
 
 
 def _pivot_schedule(df, lookback):

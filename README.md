@@ -150,10 +150,14 @@ separate presentation package under `web/`.
 ```
 src/trading_analysis/
   config.py              configuration + project paths
-  indicators.py          pure indicator functions
+  core/                  generic plugin registry + protocol
+  indicators/            one module per indicator/oscillator plugin
   data/                  exchange adapter, OHLCV cache, timeframe helpers
   analysis/              level detection + confluence engine
+    checks/              one module per confluence-check plugin
   strategies/
+    base.py              Strategy interface + registry
+    builtin.py           registered trend + DCA strategies
     backtest/            checks, features, engine, metrics, runner, report, CLI
     dca/                 DCA levels, engine, report
     walkforward.py       walk-forward validation
@@ -170,6 +174,16 @@ web/
 scripts/                 reproducible research scripts
 tests/                   indicator / engine / strategy / DCA / metrics tests
 ```
+
+## Extension points
+
+Indicators, oscillators, confluence checks, and strategies are plugins. Each
+declares a stable `id`, lives in its own module, and registers itself at import
+time through `trading_analysis.core.Registry`. Adding an indicator does not
+require editing `add_indicators`, warmup calculation, or the oscillator chart
+builder.
+
+See `DESIGN.md` §6.1 for the contracts and registration pattern.
 
 ## Docs
 

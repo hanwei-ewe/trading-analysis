@@ -146,23 +146,27 @@ def _compute_overlays(
 ):
     overlays = {"ema": {}, "bb": None, "vwap": None, "levels": {}}
 
-    for period in _parse_periods(ema_periods):
-        overlays["ema"][str(period)] = _points(
-            ind_mod.ema(df["close"], period).tail(limit)
-        )
+    ema_spec = ind_mod.INDICATORS.get("ema").chart(
+        df, _parse_periods(ema_periods), limit
+    )
+    for key, series in ema_spec.series.items():
+        overlays["ema"][key.removeprefix("ema_")] = _points(series)
 
     if show_bb and int(bb_period) > 1:
-        bb = ind_mod.bollinger(df["close"], int(bb_period), float(bb_std)).tail(limit)
+        bb_spec = ind_mod.INDICATORS.get("bollinger").chart(
+            df, [int(bb_period), float(bb_std)], limit
+        )
         overlays["bb"] = {
-            "upper": _points(bb["bb_upper"]),
-            "mid": _points(bb["bb_mid"]),
-            "lower": _points(bb["bb_lower"]),
+            "upper": _points(bb_spec.series["bb_upper"]),
+            "mid": _points(bb_spec.series["bb_mid"]),
+            "lower": _points(bb_spec.series["bb_lower"]),
         }
 
     if show_vwap:
-        overlays["vwap"] = _points(
-            ind_mod.rolling_vwap(df, int(vwap_period)).tail(limit)
+        vwap_spec = ind_mod.INDICATORS.get("vwap").chart(
+            df, int(vwap_period), limit
         )
+        overlays["vwap"] = _points(vwap_spec.series["vwap"])
 
     return overlays
 
@@ -179,6 +183,7 @@ def _attach_levels(overlays, df, cfg, timeframe):
 
 def _compute_oscillators(
     df,
+    cfg,
     limit,
     osc,
     rsi_period,
@@ -191,48 +196,29 @@ def _compute_oscillators(
     adx_period,
 ):
     ids = [x.strip() for x in str(osc or "").split(",") if x.strip()]
+    params = dict(cfg["indicators"])
+    params.update(
+        {
+            "rsi": int(rsi_period),
+            "macd": [int(macd_fast), int(macd_slow), int(macd_signal)],
+            "stoch": [int(stoch_k), int(stoch_d), int(stoch_smooth)],
+            "adx": int(adx_period),
+        }
+    )
     out = {}
     for oid in ids:
-        if oid == "rsi":
-            out["rsi"] = {
-                "series": _points(ind_mod.rsi(df["close"], int(rsi_period)).tail(limit)),
-                "levels": [70, 30],
-                "fixed_range": [0, 100],
-            }
-        elif oid == "macd":
-            m = ind_mod.macd(
-                df["close"], int(macd_fast), int(macd_slow), int(macd_signal)
-            ).tail(limit)
-            out["macd"] = {
-                "macd": _points(m["macd"]),
-                "signal": _points(m["macd_signal"]),
-                "hist": _points(m["macd_hist"]),
-            }
-        elif oid == "stoch":
-            s = ind_mod.stochastic(
-                df["high"], df["low"], df["close"], int(stoch_k), int(stoch_d),
-                int(stoch_smooth),
-            ).tail(limit)
-            out["stoch"] = {
-                "k": _points(s["stoch_k"]),
-                "d": _points(s["stoch_d"]),
-                "levels": [80, 20],
-                "fixed_range": [0, 100],
-            }
-        elif oid == "adx":
-            a = ind_mod.adx(df["high"], df["low"], df["close"], int(adx_period)).tail(
-                limit
-            )
-            out["adx"] = {
-                "adx": _points(a["adx"]),
-                "plus_di": _points(a["plus_di"]),
-                "minus_di": _points(a["minus_di"]),
-                "levels": [25],
-            }
-        elif oid == "obv":
-            out["obv"] = {
-                "series": _points(ind_mod.obv(df["close"], df["volume"]).tail(limit))
-            }
+        indicator = ind_mod.INDICATORS.maybe_get(oid)
+        if indicator is None or indicator.kind is not ind_mod.IndicatorKind.OSCILLATOR:
+            continue
+        spec = indicator.chart(df, params.get(oid), limit)
+        if spec is None:
+            continue
+        payload = {key: _points(series) for key, series in spec.series.items()}
+        if spec.levels:
+            payload["levels"] = list(spec.levels)
+        if spec.fixed_range:
+            payload["fixed_range"] = list(spec.fixed_range)
+        out[oid] = payload
     return out
 
 
@@ -266,7 +252,7 @@ def get_chart_data(
     )
     _attach_levels(overlays, df, cfg, tf)
     oscillators = _compute_oscillators(
-        df, limit, osc, rsi_period, macd_fast, macd_slow, macd_signal,
+        df, cfg, limit, osc, rsi_period, macd_fast, macd_slow, macd_signal,
         stoch_k, stoch_d, stoch_smooth, adx_period,
     )
 
@@ -308,7 +294,7 @@ def get_overlays(
     )
     _attach_levels(overlays, df, cfg, tf)
     oscillators = _compute_oscillators(
-        df, limit, osc, rsi_period, macd_fast, macd_slow, macd_signal,
+        df, cfg, limit, osc, rsi_period, macd_fast, macd_slow, macd_signal,
         stoch_k, stoch_d, stoch_smooth, adx_period,
     )
 

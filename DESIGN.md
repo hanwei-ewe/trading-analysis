@@ -1,6 +1,6 @@
 # DESIGN.md — Trading Analysis Agent
 
-_Architecture, method, and conventions. Version 2.8 — 2026-10-24._
+_Architecture, method, and conventions. Version 2.9 — 2026-10-24._
 _Companion to RULES.md (constraints) and PLAN.md (roadmap)._
 
 ## 1. Broker & Data Source
@@ -82,10 +82,12 @@ Views:
   swing pivots. **Oscillators** (RSI, MACD, Stochastic, ADX, OBV) render as
   separate lightweight-charts below the main chart, time-synced via logical-range
   subscription so zoom/pan stays aligned. Overlays and oscillators are
-  recomputed server-side on change. Indicators live in `indicators.py` as pure
-  functions and are extensible — new **price overlays** (SMA/WMA/Keltner/
-  Donchian/Ichimoku) or **oscillator panes** can be added without touching the
-  chart core.
+  recomputed server-side on change. Indicators are registered plugins under
+  `src/trading_analysis/indicators/`; each plugin declares its id, kind, output
+  columns, warmup, and optional chart payload. New **oscillator panes** can be
+  added without editing the analysis or oscillator chart builder. Price overlays
+  share the same plugin contract; EMA/Bollinger/VWAP currently have dedicated
+  chart builders because their UI controls differ.
 - **Learn / "Why?"** — every signal and state carries a plain-language
   explanation: what the indicator means, the current reading, which way it voted
   and why, what would flip it, and a confidence breakdown (see §13).
@@ -190,10 +192,14 @@ Packaging & running (canonical: Docker):
 ├── src/
 │   └── trading_analysis/    # importable library
 │       ├── config.py
-│       ├── indicators.py
+│       ├── core/            # generic plugin registry + protocol
+│       ├── indicators/      # one module per indicator/oscillator plugin
 │       ├── data/            # exchange adapter, cache, timeframe helpers
 │       ├── analysis/        # levels + confluence engine
+│       │   └── checks/      # one module per confluence-check plugin
 │       ├── strategies/
+│       │   ├── base.py      # Strategy interface + registry
+│       │   ├── builtin.py   # registered trend + DCA strategies
 │       │   ├── backtest/    # checks, features, engine, metrics, runner, report, CLI
 │       │   ├── dca/         # levels, engine, report
 │       │   ├── walkforward.py
@@ -213,16 +219,37 @@ Packaging & running (canonical: Docker):
 └── tests/
 ```
 
+### 6.1 Plugin Architecture
+
+Shared extension points use `trading_analysis.core.Registry`. A plugin declares
+a stable `id` and is registered with a decorator, so adding a feature does not
+require editing a central `if/elif` chain.
+
+- **Indicators/oscillators:** subclass `indicators.base.Indicator`, implement
+  `compute(frame, params)`, and optionally `warmup(params)` and
+  `chart(frame, params, limit)`. Register with `@INDICATORS.register`. The
+  indicator automatically participates in `add_indicators`, warmup calculation,
+  and oscillator chart payloads.
+- **Confluence checks:** subclass `analysis.checks.base.Check`, implement
+  `evaluate(ctx) -> CheckResult | None`, and register with `@CHECKS.register`.
+  The check automatically appears in `ALL_CHECKS` and can be selected by id.
+- **Strategies:** subclass `strategies.base.Strategy`, implement `run(frame,
+  **params)`, and register with `@STRATEGIES.register`.
+
+Keep each plugin in its own module and import it from the package `__init__` so
+registration happens once at import time. A plugin should depend on the shared
+context/contracts, not on another plugin's private internals.
+
 ## 7. Strategy Layer
 
-- **Interface:** a `Strategy` exposes `generate_signals(data) -> Signal[]`,
-  where a `Signal` carries: pair, timeframe, direction, entry zone, stop,
-  targets, confidence, and invalidation.
-- **Pluggable:** strategies are selected by name in `config.yaml`.
+- **Interface:** `strategies.base.Strategy` exposes `run(frame, **params)` and
+  returns a result dictionary. Signal construction remains in `analysis/`; the
+  strategy orchestrates data, checks, and its engine.
+- **Pluggable:** strategies register in `STRATEGIES` and are selected by id.
 - **Pure:** strategies are deterministic functions of their input data — no I/O,
   no state that can't be reconstructed from the data window.
-- Strategies may compose shared indicator functions but must not embed sizing or
-  execution logic.
+- Strategies may compose shared indicator plugins but must not embed execution
+  logic.
 
 ## 8. Backtesting Engine
 

@@ -1,6 +1,6 @@
 # PLAN.md — Roadmap
 
-_Version 2.8 — 2026-10-24._
+_Version 2.9 — 2026-10-24._
 _Companion to RULES.md (constraints) and DESIGN.md (architecture)._
 
 ## Phase 1 — Analysis + Foundations (done)
@@ -47,10 +47,14 @@ Milestones:
 
 ## Phase 2 — Strategy Framework + Backtesting (current)
 
-- Expand the price-overlay library via a registry (SMA/WMA/Keltner/Donchian/
-  Ichimoku) without touching the chart core.
-- `strategy/base.py`: pluggable `Strategy` interface (signals only).
-- `risk.py`: sizing + RULES.md §5 limits, decoupled from strategies.
+- [x] Registry-backed indicator/oscillator plugins (`core.Registry`,
+      `indicators.base.Indicator`); warmup and chart payloads are automatic.
+- [x] Registry-backed confluence checks (`analysis.checks.Check`); `ALL_CHECKS`
+      is derived from the registry.
+- [x] `strategies/base.py`: pluggable `Strategy` interface and registry.
+- [ ] Add more price overlays (SMA/WMA/Keltner/Donchian/Ichimoku) on the plugin
+      contract without touching the chart core.
+- [ ] `risk.py`: sizing + RULES.md §5 limits, decoupled from strategies.
 - [x] `data.load_history`: paged historical OHLCV + warmup for long windows.
 - [x] `backtest.py`: event-driven engine, no look-ahead bias, modeled costs.
 - [x] `metrics.py`: return, Sharpe/Sortino, max drawdown, win rate, profit
