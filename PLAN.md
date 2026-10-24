@@ -1,6 +1,6 @@
 # PLAN.md — Roadmap
 
-_Version 2.7 — 2026-10-19._
+_Version 2.8 — 2026-10-24._
 _Companion to RULES.md (constraints) and DESIGN.md (architecture)._
 
 ## Phase 1 — Analysis + Foundations (done)
@@ -57,6 +57,21 @@ Milestones:
       factor, benchmark vs buy-and-hold ETH (currently inside `backtest.py`;
       extract when a second strategy exists).
 - [x] `results/`: persist config, params, metrics, equity curves, trades.
+- [x] Long-only spot risk engine: percent risk sizing, cash buffer, minimum
+      notional, no shorts/leverage, equity floor.
+- [x] `rsi21` trend candidate: 4h, RSI 21, 2x stop, 4R target, MTF on; ETH 5y
+      +49.99% (DD -8.44%), BTC +46.05% (DD -8.45%).
+- [x] DCA capital-ladder engine: fixed/Fibonacci/geometric/ATR/trend-Fibonacci
+      levels, allocation presets, anchor/rolling/ATH references,
+      percent/retrace/ATR targets, EMA200 filter, reserve/reinvestment,
+      optional curve.
+- [x] 15m frequency study: trend and DCA variants tested with costs; rejected
+      (ETH trend -70.22%, BTC trend -83.25%).
+- [x] Support/resistance audit: swing pivots, PA, Donchian breakout, EMA
+      extension, VWAP/Bollinger; PA/breakout/extension did not survive the
+      test window and are not in the final filter.
+- [x] Portfolio helper: blend DCA and trend equity curves, curve metrics.
+- [x] DCA dashboard/report: `/dca`, `/dca/run`, `/dca/report`, `/api/dca`.
 - [ ] Web UI: Strategy editor + Backtests view (metrics, equity curve,
       comparison).
 - [ ] Robustness: train/validation/out-of-sample + walk-forward.
@@ -211,6 +226,66 @@ costs, and its BTC holdout is stronger than ETH's. But recent periods diverge
 (ETH +10.5R, BTC -4.7R), so the edge is regime-dependent. The 1x/2R config
 fails on at least one asset in each period. 2x/3R is the only config worth
 paper trading.
+
+### DCA / capital ladder study (2026-10-24)
+
+Goal: test whether a $1,000 DCA ladder can beat the trend strategy, including
+Fibonacci/geometric/ATR levels, allocation variants, adaptive targets, and a
+trend filter. Windows: train 2021-10-21 → 2024-10-20, test 2024-10-20 →
+2026-10-20; final 5-year run; ETH primary, BTC cross-check; pre-window anchor
+used for the test so the reference is not built from test-window highs.
+
+Canonical 5-year ETH results (0.10% fee + 0.05% slippage):
+
+| Strategy | Return | Max DD | Calmar |
+| --- | ---: | ---: | ---: |
+| Trend `rsi21` | +49.99% | -8.44% | 1.00 |
+| DCA `fib_deep_percent15` | +61.72% | -18.56% | 0.54 |
+| DCA `fib_deep_retrace50` | +90.93% | -29.29% | 0.47 |
+| DCA `fib_equal_retrace50` | +131.36% | -36.20% | 0.50 |
+| DCA `fixed_deep_percent15` | +188.23% | -36.32% | 0.65 |
+| 50/50 blend `fib_deep_percent15` + trend | +89.35% | -11.36% | 1.20 |
+| 25% blend `fib_deep_percent15` + trend | +68.20% | -9.88% | 1.11 |
+| 75% blend `fib_deep_percent15` + trend | +116.94% | -14.51% | 1.16 |
+
+Test (2024-10-20 → 2026-10-20, ETH):
+
+| Strategy | Return | Max DD | Calmar |
+| --- | ---: | ---: | ---: |
+| Trend `rsi21` | +22.67% | -6.44% | 1.67 |
+| DCA `fib_deep_percent15` | +3.72% | -0.87% | 2.12 |
+| 50/50 blend | +25.58% | -6.63% | 1.82 |
+| DCA `fib_equal_retrace50` | +14.44% | -3.35% | 2.08 |
+
+BTC cross-check: trend 5y +46.05% / DD -8.45% / Calmar 0.93; DCA
+`fib_deep_percent15` +19.48% / DD -20.09% / Calmar 0.18; 50/50 blend +58.63% /
+DD -15.23% / Calmar 0.64; test DCA 0.0%, blend +9.55% / DD -8.21% / Calmar 0.57
+vs trend +10.54% / DD -7.84% / Calmar 0.66.
+
+Findings:
+- Fixed gaps alone were misleading; Fibonacci levels + EMA200 + adaptive
+  percent/retrace targets materially improved DCA returns.
+- DCA can beat trend on raw ETH return but not risk-adjusted return; it also
+  underperforms in the 2024-2026 bull test because shallow dips rarely fill deep
+  levels.
+- A 50% `fib_deep_percent15` blend is the best ETH risk-adjusted compromise
+  (5y Calmar 1.20, test Calmar 1.82) but is BTC-negative. DCA is an ETH
+  satellite/accumulation tool, not a cross-market replacement.
+- ATR/geometric levels and anti-martingale allocations were unstable (ATR train
+  negative, geometric DD -60% to -73%, anti-martingale train DD -59%). Do not
+  use them as defaults.
+- Always state the anchor window: using test-window highs as the anchor inflates
+  test results; the corrected pre-window anchor makes DCA test returns small.
+- Higher frequency did not improve profit: 15m trend lost 70-92% with costs;
+  15m DCA either did not fill or had 43-59% drawdowns. Fees/slippage/noise
+  dominate.
+- Indicator-derived S/R was not a free win: the selected six-check set made
+  20.69R train / 17.37R test, while a PA-heavy set made 22.24R / 5.24R.
+  `trend_fib` uses swing-leg levels but is not yet validated for 4h production.
+
+Artifacts: `results/study_dca_5y.csv`, `study_dca_test.csv`,
+`study_dca_variants.csv`, `study_dca_targets.csv`, `study_dca_finalists_5y.csv`,
+`study_blend_dca_trend.csv`, `study_15m_sr.csv`; interactive `/dca` report.
 
 ## Phase 3 — Paper Trading
 

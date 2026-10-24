@@ -1,4 +1,5 @@
 import argparse
+import copy
 import json
 import math
 from bisect import bisect_left, bisect_right, insort
@@ -25,6 +26,9 @@ ALL_CHECKS = (
     "stoch",
     "adx",
     "obv",
+    "pa",
+    "breakout",
+    "extension",
 )
 
 
@@ -38,6 +42,16 @@ def _parse_checks(raw):
     if bad:
         raise ValueError(f"unknown checks: {', '.join(sorted(bad))}")
     return parts
+
+
+def _merge_overrides(base, overrides):
+    out = copy.deepcopy(base)
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _merge_overrides(out[key], value)
+        else:
+            out[key] = copy.deepcopy(value)
+    return out
 
 
 def _warmup_bars(cfg):
@@ -58,6 +72,7 @@ def _warmup_bars(cfg):
         stoch_cfg[0] + stoch_cfg[1] + stoch_cfg[2],
         adx_period * 2,
         obv_period + 1,
+        ind.get("breakout", 20),
     )
     return int(need) + int(cfg["swings"]["lookback"]) + 5
 
@@ -289,6 +304,17 @@ def _adjust_stop(side, entry, stop, mult):
     return entry + float(mult) * (stop - entry)
 
 
+def _position_units(equity, risk_pct, risk_per_unit, entry, cash_buffer, min_notional):
+    if equity <= 0 or risk_per_unit <= 0 or entry <= 0:
+        return 0.0
+    risk_amount = equity * risk_pct / 100.0
+    max_notional = equity * (1.0 - cash_buffer)
+    units = min(risk_amount / risk_per_unit, max_notional / entry)
+    if units * entry < min_notional:
+        return 0.0
+    return units
+
+
 def _close(position, raw_exit, exit_time, exit_index, equity, fee_rate, slippage, reason):
     side = position["side"]
     exit_price = _fill(raw_exit, side, slippage, entering=False)
@@ -315,7 +341,7 @@ def _close(position, raw_exit, exit_time, exit_index, equity, fee_rate, slippage
         "score": position["score"],
         "confidence": position["confidence"],
     }
-    return equity + net, trade
+    return max(equity + net, 0.0), trade
 
 
 def _run_engine(
@@ -333,7 +359,16 @@ def _run_engine(
     regime_filter="none",
     stop_mult=1.0,
     target_r=None,
+    long_only=False,
+    risk_pct=None,
+    cash_buffer=0.02,
+    min_notional=5.0,
+    window_end=None,
 ):
+    risk_pct = float(
+        risk_pct if risk_pct is not None else cfg["risk"]["max_risk_pct"]
+    )
+    cash_buffer = float(cash_buffer)
     n = len(ind)
     warm = _warmup_bars(cfg)
     start_idx = warm
@@ -341,6 +376,11 @@ def _run_engine(
         start_idx += 1
     if start_idx >= n:
         raise ValueError("not enough candles in the requested window")
+    end_idx = n
+    if window_end is not None:
+        end_idx = int(ind.index.searchsorted(pd.Timestamp(window_end)))
+        if end_idx <= start_idx:
+            raise ValueError("window_end must be after window_start")
 
     by_pos = {i: res for i, res in results}
     equity = float(initial_equity)
@@ -352,7 +392,7 @@ def _run_engine(
     curve = []
     bars_in_position = 0
 
-    for i in range(start_idx, n):
+    for i in range(start_idx, end_idx):
         ts = ind.index[i]
         bar_open = float(ind["open"].iloc[i])
         bar_high = float(ind["high"].iloc[i])
@@ -428,13 +468,13 @@ def _run_engine(
                                 target_mode,
                                 target_r,
                             )
-                            risk_amount = (
-                                equity
-                                * float(cfg["risk"]["max_risk_pct"])
-                                / 100.0
-                            )
-                            units = min(
-                                risk_amount / risk_per_unit, equity / entry
+                            units = _position_units(
+                                equity,
+                                risk_pct,
+                                risk_per_unit,
+                                entry,
+                                cash_buffer,
+                                min_notional,
                             )
                             if units > 0:
                                 position = {
@@ -478,10 +518,14 @@ def _run_engine(
                         else target < bar_open < original_stop
                     )
                 if valid and risk_per_unit > 0:
-                    risk_amount = (
-                        equity * float(cfg["risk"]["max_risk_pct"]) / 100.0
+                    units = _position_units(
+                        equity,
+                        risk_pct,
+                        risk_per_unit,
+                        entry,
+                        cash_buffer,
+                        min_notional,
                     )
-                    units = min(risk_amount / risk_per_unit, equity / entry)
                     if units > 0:
                         position = {
                             "side": side,
@@ -534,8 +578,17 @@ def _run_engine(
                     candidate["direction"],
                     regime_filter,
                 )
-                prev_signal = candidate if allowed else None
-                if entry_mode == "limit" and position is None:
+                if long_only and candidate["direction"] == "SHORT":
+                    prev_signal = None
+                    if pending is not None:
+                        pending = None
+                else:
+                    prev_signal = candidate if allowed else None
+                if (
+                    entry_mode == "limit"
+                    and position is None
+                    and (not long_only or candidate["direction"] == "LONG")
+                ):
                     if pending is not None and (
                         pending["side"] != candidate["direction"]
                         or not _regime_allows(
@@ -570,7 +623,7 @@ def _run_engine(
                         pending = None
 
     if position is not None:
-        last = n - 1
+        last = end_idx - 1
         equity, trade = _close(
             position,
             float(ind["close"].iloc[last]),
@@ -590,6 +643,7 @@ def _run_engine(
         "bars_in_position": bars_in_position,
         "initial_equity": float(initial_equity),
         "start_index": start_idx,
+        "end_index": end_idx,
     }
 
 
@@ -662,9 +716,10 @@ def _metrics(engine, ind, timeframe, buy_hold):
     }
 
 
-def _buy_hold(ind, start_idx):
+def _buy_hold(ind, start_idx, end_idx=None):
+    end = len(ind) if end_idx is None else end_idx
     first = float(ind["close"].iloc[start_idx])
-    last = float(ind["close"].iloc[-1])
+    last = float(ind["close"].iloc[end - 1])
     return last / first - 1.0 if first else 0.0
 
 
@@ -674,7 +729,7 @@ def run_backtest(
     symbol=None,
     days=365,
     checks=None,
-    initial_equity=10000.0,
+    initial_equity=1000.0,
     fee=0.001,
     slippage=0.0005,
     use_cache=True,
@@ -685,6 +740,13 @@ def run_backtest(
     regime_filter="none",
     stop_mult=1.0,
     target_r=None,
+    long_only=False,
+    risk_pct=None,
+    cash_buffer=0.02,
+    min_notional=5.0,
+    window_start=None,
+    window_end=None,
+    indicator_overrides=None,
     adapter=None,
     df=None,
     htf_dfs=None,
@@ -693,7 +755,17 @@ def run_backtest(
         raise ValueError("stop_mult must be > 0")
     if target_r is not None and float(target_r) <= 0:
         raise ValueError("target_r must be > 0")
+    if risk_pct is not None and not 0 < float(risk_pct) <= 100:
+        raise ValueError("risk_pct must be in (0, 100]")
+    if not 0 <= float(cash_buffer) < 1:
+        raise ValueError("cash_buffer must be in [0, 1)")
+    if float(min_notional) < 0:
+        raise ValueError("min_notional must be >= 0")
     cfg = load_config(config_path)
+    if indicator_overrides:
+        if not isinstance(indicator_overrides, dict):
+            raise ValueError("indicator_overrides must be a dict")
+        cfg = _merge_overrides(cfg, indicator_overrides)
     pair = symbol or cfg["universe"]["pair"]
     tf = timeframe or cfg["timeframes"]["primary"]
     active = set(checks or DEFAULT_CHECKS)
@@ -754,10 +826,19 @@ def run_backtest(
             )
     results = _evaluate_frame(primary_ind, cfg, active, tf, htf_by_pos)
 
-    window_start = primary_ind.index[-1] - pd.Timedelta(days=days)
-    warm_start = primary_ind.index[min(warm, len(primary_ind) - 1)]
-    if window_start < warm_start:
-        window_start = warm_start
+    if window_start is None:
+        window_start = primary_ind.index[-1] - pd.Timedelta(days=days)
+        warm_start = primary_ind.index[min(warm, len(primary_ind) - 1)]
+        if window_start < warm_start:
+            window_start = warm_start
+    else:
+        window_start = pd.Timestamp(window_start)
+        if window_start.tzinfo is None:
+            window_start = window_start.tz_localize("UTC")
+    if window_end is not None:
+        window_end = pd.Timestamp(window_end)
+        if window_end.tzinfo is None:
+            window_end = window_end.tz_localize("UTC")
 
     engine = _run_engine(
         primary_ind,
@@ -774,10 +855,18 @@ def run_backtest(
         regime_filter=regime_filter,
         stop_mult=stop_mult,
         target_r=target_r,
+        long_only=long_only,
+        risk_pct=risk_pct,
+        cash_buffer=cash_buffer,
+        min_notional=min_notional,
+        window_end=window_end,
     )
     start_idx = engine["start_index"]
     metrics = _metrics(
-        engine, primary_ind, tf, _buy_hold(primary_ind, start_idx)
+        engine,
+        primary_ind,
+        tf,
+        _buy_hold(primary_ind, start_idx, engine["end_index"]),
     )
     return {
         "symbol": pair,
@@ -793,6 +882,13 @@ def run_backtest(
         "regime_filter": regime_filter,
         "stop_mult": float(stop_mult),
         "target_r": None if target_r is None else float(target_r),
+        "long_only": bool(long_only),
+        "risk_pct": float(
+            risk_pct if risk_pct is not None else cfg["risk"]["max_risk_pct"]
+        ),
+        "cash_buffer": float(cash_buffer),
+        "min_notional": float(min_notional),
+        "indicator_overrides": indicator_overrides or {},
         "metrics": metrics,
         "trades": engine["trades"],
         "equity_curve": engine["equity_curve"],
@@ -830,6 +926,12 @@ def to_markdown(result):
             else "proposal T1"
         ),
         f"- Stop width: {result.get('stop_mult', 1.0)}x structural",
+        f"- Initial capital: ${result['metrics']['initial_equity']:,.0f}",
+        "- Direction: long-only (spot, no leverage)"
+        if result.get("long_only")
+        else "- Direction: long and short",
+        f"- Risk: {result.get('risk_pct', 0):.1f}% per trade, "
+        f"{result.get('cash_buffer', 0) * 100:.1f}% cash buffer",
         f"- Entry: {'limit at zone mid' if result.get('entry_mode') == 'limit' else 'market at next open'}"
         + (
             f" (valid {result['limit_bars']} bars)"
@@ -899,7 +1001,7 @@ def main(argv=None):
     parser.add_argument("--days", type=int, default=365)
     parser.add_argument("--checks", default="default",
                         help="default, all, or comma-separated check ids")
-    parser.add_argument("--equity", type=float, default=10000.0)
+    parser.add_argument("--equity", type=float, default=1000.0)
     parser.add_argument("--fee", type=float, default=0.001)
     parser.add_argument("--slippage", type=float, default=0.0005)
     parser.add_argument("--no-mtf", action="store_true")
@@ -914,6 +1016,16 @@ def main(argv=None):
                         help="scale structural stop distance (1 = as proposed)")
     parser.add_argument("--target-r", type=float, default=None,
                         help="fixed R-multiple target from fill; overrides --target")
+    parser.add_argument("--long-only", action="store_true",
+                        help="spot mode: no shorts, cash-only notional")
+    parser.add_argument("--risk-pct", type=float, default=None,
+                        help="risk per trade in percent of equity")
+    parser.add_argument("--cash-buffer", type=float, default=0.02)
+    parser.add_argument("--min-notional", type=float, default=5.0)
+    parser.add_argument("--start", default=None)
+    parser.add_argument("--end", default=None)
+    parser.add_argument("--overrides", default=None,
+                        help="JSON config overrides, e.g. '{\"indicators\":{\"rsi\":7}}'")
     args = parser.parse_args(argv)
 
     result = run_backtest(
@@ -933,6 +1045,15 @@ def main(argv=None):
         regime_filter=args.regime_filter,
         stop_mult=args.stop_mult,
         target_r=args.target_r,
+        long_only=args.long_only,
+        risk_pct=args.risk_pct,
+        cash_buffer=args.cash_buffer,
+        min_notional=args.min_notional,
+        window_start=args.start,
+        window_end=args.end,
+        indicator_overrides=(
+            json.loads(args.overrides) if args.overrides else None
+        ),
     )
     paths = save_results(result, args.config)
     print(to_markdown(result))

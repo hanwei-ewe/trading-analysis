@@ -1,6 +1,6 @@
 # DESIGN.md — Trading Analysis Agent
 
-_Architecture, method, and conventions. Version 2.6 — 2026-10-19._
+_Architecture, method, and conventions. Version 2.7 — 2026-10-24._
 _Companion to RULES.md (constraints) and PLAN.md (roadmap)._
 
 ## 1. Broker & Data Source
@@ -105,6 +105,10 @@ API endpoints (Phase 1):
 - `GET /api/overlays?<same params>` — overlay series only (no candles); used for
   show/hide and parameter changes so the chart view is never reset.
 - `POST /analysis/run?timeframe=` — run + journal analysis, return summary partial.
+- `GET /dca` — DCA ladder page.
+- `GET /dca/run?<ladder params>` — DCA result partial (HTML).
+- `GET /dca/report?<ladder params>` — downloadable Markdown report.
+- `GET /api/dca?<ladder params>` — DCA result (JSON).
 
 Performance:
 - OHLCV is cached in memory per (symbol, timeframe) with a short TTL (~20s) and
@@ -197,6 +201,9 @@ trading_analysis/
 │   ├── analysis.py     # framework: regime→momentum→vol→levels→volume→confluence
 │   ├── explanations.py # rule → plain-language explanations + indicator glossary
 │   ├── metrics.py      # backtest performance metrics
+│   ├── dca.py          # DCA capital-ladder engine
+│   ├── dca_report.py   # DCA report/service layer
+│   ├── portfolio.py    # curve blending + curve metrics
 │   └── report.py       # output formatting (MD + JSON)
 ├── web/
 │   ├── api.py          # FastAPI endpoints
@@ -502,3 +509,37 @@ narrative → optional agent.
 - Report delivery (console vs file vs web UI).
 - Fill/slippage model defaults.
 - Hosting target for always-on phases (local Docker vs VPS).
+
+
+## 16. DCA Ladder (research)
+
+A separate research view, not part of the live signal path.
+
+- **Engine:** `src/dca.py` simulates a spot-only ladder. Each level is a
+  fraction below a reference; capital is allocated across levels; each lot has
+  its own profit target; profitable exits may reserve or reinvest.
+- **Levels:** fixed gaps, Fibonacci retracements, trend-leg Fibonacci
+  (`trend_fib`, recent swing high/low), geometric gaps, or ATR multiples.
+- **References:** static anchor (start-of-window high), rolling prior high, or
+  all-time high. Rolling uses `high.shift(1).rolling(lookback).max()` to avoid
+  same-bar look-ahead.
+- **Targets:** fixed percent, retrace of the reference, or ATR multiple.
+- **Filter:** optional EMA200; entries only when price is above it.
+- **Allocations:** equal, front/back-loaded, deep/very-deep, Fibonacci,
+  inverse, martingale/anti-martingale, or custom normalized weights.
+- **Accounting:** fees 0.10% + slippage 0.05% on entries/exits; unspent cash is
+  idle; reserve is tracked separately; open lots are marked to market; no
+  leverage, shorts, or deposits.
+- **Blending:** `src/portfolio.py` aligns DCA `total_wealth` and trend `equity`
+  curves on their inner join, normalizes weights, and computes CAGR/Sharpe/DD/
+  Calmar. Trend risk is grossed up by `1/(1-w_dca)` before weighting so the
+  combined initial capital stays $1,000.
+- **UI:** `/dca` renders controls, metrics, ladder/rules, recent exits, and an
+  equity chart; `/dca/report` returns Markdown; `/api/dca` returns JSON.
+- **Guardrail:** DCA is an accumulation/regime tool. It does not replace the
+  trend signal; the default research blend is 50% `fib_deep_percent15` + 50%
+  trend, which improves ETH risk-adjusted return but is not BTC-positive.
+- **Frequency/S-R:** 15m was tested and rejected (ETH trend -70.22%, BTC
+  -83.25% with costs). Swing-pivot S/R anchors stops; PA/Donchian/extension
+  were swept but did not survive the test window. Indicator-derived S/R is not
+  a validated DCA level source.

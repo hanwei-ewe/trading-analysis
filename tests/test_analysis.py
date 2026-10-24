@@ -64,6 +64,21 @@ def test_score_within_active_bounds():
         assert abs(res["score"]) <= res["max_score"] == len(active)
 
 
+def test_price_action_check_is_available():
+    res = analyze(_df(), CFG, active={"pa"})
+    assert res["max_score"] == 1
+    assert res["checks"][0]["id"] == "pa"
+
+
+def test_breakout_and_extension_checks_are_available():
+    breakout = analyze(_df(), CFG, active={"breakout"})
+    assert breakout["max_score"] == 1
+    assert breakout["checks"][0]["id"] == "breakout"
+    extension = analyze(_df(), CFG, active={"extension"})
+    assert extension["max_score"] == 1
+    assert extension["checks"][0]["id"] == "extension"
+
+
 def test_htf_check_counts_toward_score():
     base = analyze(_df(), CFG)
     htf = [{"id": "htf_4h", "label": "x", "vote": 0, "weight": 0, "reading": "y"}]

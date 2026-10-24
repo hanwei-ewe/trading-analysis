@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DCA ladder — {{ result.symbol }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/vendor/htmx.min.js"></script>
+  <script src="/static/vendor/lightweight-charts.js"></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>DCA ladder</h1>
+      <div class="meta">Backtest-only capital ladder with profit reserve</div>
+    </div>
+    <a class="header-link" href="/">Back to analysis</a>
+  </header>
+
+  <section class="card dca-controls">
+    <form hx-get="/dca/run" hx-target="#dca-result" hx-swap="innerHTML" hx-indicator="#dca-busy">
+      <div class="dca-form-grid">
+        <label>Symbol
+          <select name="symbol">
+            {% for symbol in symbols %}<option value="{{ symbol }}" {{ 'selected' if symbol == result.symbol else '' }}>{{ symbol }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Timeframe
+          <select name="timeframe">
+            {% for tf in timeframes %}<option value="{{ tf }}" {{ 'selected' if tf == result.timeframe else '' }}>{{ tf }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Days
+          <input type="number" name="days" value="{{ result.days }}" min="120" max="2500" step="1">
+        </label>
+        <label>Initial capital
+          <input type="number" name="initial_capital" value="{{ result.initial_capital }}" min="100" step="100">
+        </label>
+        <label>Level mode
+          <select name="level_mode">
+            {% for mode in ['fib', 'trend_fib', 'fixed', 'geometric', 'atr'] %}<option value="{{ mode }}" {{ 'selected' if mode == result.level_mode else '' }}>{{ mode }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Allocation
+          <select name="allocation">
+            {% for preset in presets %}<option value="{{ preset }}" {{ 'selected' if preset == result.allocation else '' }}>{{ preset }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Reference
+          <select name="reference_mode">
+            {% for mode in ['anchor', 'rolling', 'ath'] %}<option value="{{ mode }}" {{ 'selected' if mode == result.reference_mode else '' }}>{{ mode }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Target mode
+          <select name="target_mode">
+            {% for mode in ['percent', 'retrace', 'atr'] %}<option value="{{ mode }}" {{ 'selected' if mode == result.target_mode else '' }}>{{ mode }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Profit target %
+          <input type="number" name="profit_target" value="{{ '%.1f'|format(result.profit_target * 100) }}" min="1" max="100" step="0.5">
+        </label>
+        <label>Retrace
+          <input type="number" name="target_retrace" value="{{ result.target_retrace }}" min="0.1" max="0.9" step="0.01">
+        </label>
+        <label>ATR target
+          <input type="number" name="target_atr" value="{{ result.target_atr }}" min="0.5" max="10" step="0.1">
+        </label>
+        <label>Reinvest %
+          <input type="number" name="reinvest_pct" value="{{ '%.0f'|format(result.reinvest_pct * 100) }}" min="0" max="100" step="5">
+        </label>
+        <label>Trend filter
+          <select name="trend_filter">
+            {% for mode in ['ema200', 'none'] %}<option value="{{ mode }}" {{ 'selected' if mode == result.trend_filter else '' }}>{{ mode }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Custom levels
+          <input type="text" name="levels" placeholder="blank = mode default">
+        </label>
+        <label>Custom weights
+          <input type="text" name="allocations" placeholder="used only with custom">
+        </label>
+        <label>Swing lookback
+          <input type="number" name="swing_lookback" value="{{ result.swing_lookback or 50 }}" min="2" step="1">
+        </label>
+      </div>
+      <div class="dca-actions">
+        <button type="submit">Run ladder</button>
+        <a href="#" id="dca-report" class="header-link" target="_blank">Download .md</a>
+        <span id="dca-busy" class="htmx-indicator muted">Running…</span>
+      </div>
+    </form>
+  </section>
+
+  <main class="dca-main">
+    <section id="dca-result" class="card">
+      {% include "_dca.html" %}
+    </section>
+  </main>
+
+  <footer>Level 0 — analysis only. No orders are placed. Not financial advice.</footer>
+  <script src="/static/dca.js"></script>
+  <script>
+    document.getElementById("dca-report").addEventListener("click", (event) => {
+      event.preventDefault();
+      const form = document.querySelector(".dca-controls form");
+      const params = new URLSearchParams(new FormData(form));
+      window.open("/dca/report?" + params.toString(), "_blank");
+    });
+  </script>
+</body>
+</html>

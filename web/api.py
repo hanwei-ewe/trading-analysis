@@ -3,11 +3,12 @@ import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from src.config import ROOT, load_config
+from src.dca_report import ALLOCATION_PRESETS, run_dca_report, serialize, to_markdown
 from src.pipeline import (
     get_chart_data,
     get_explanations,
@@ -95,6 +96,45 @@ def _params_from_query(q, cfg):
     }
 
 
+def _to_int(q, name, default):
+    try:
+        return int(q.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_float(q, name, default):
+    try:
+        return float(q.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _dca_from_query(q):
+    return {
+        "symbol": q.get("symbol") or None,
+        "timeframe": q.get("timeframe") or "4h",
+        "days": _to_int(q, "days", 1900),
+        "initial_capital": _to_float(q, "initial_capital", 1000.0),
+        "level_mode": q.get("level_mode") or "fib",
+        "levels": q.get("levels") or None,
+        "level_base": _to_float(q, "level_base", 0.10),
+        "allocation": q.get("allocation") or "deep",
+        "allocations": q.get("allocations") or None,
+        "reference_mode": q.get("reference_mode") or "anchor",
+        "target_mode": q.get("target_mode") or "percent",
+        "profit_target": _to_float(q, "profit_target", 15.0),
+        "target_retrace": _to_float(q, "target_retrace", 0.5),
+        "target_atr": _to_float(q, "target_atr", 3.0),
+        "reinvest_pct": _to_float(q, "reinvest_pct", 50.0),
+        "trend_filter": q.get("trend_filter") or "ema200",
+        "ema_period": _to_int(q, "ema_period", 200),
+        "atr_period": _to_int(q, "atr_period", 14),
+        "reference_lookback": _to_int(q, "reference_lookback", 180),
+        "swing_lookback": _to_int(q, "swing_lookback", 50),
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
     cfg = load_config()
@@ -134,6 +174,47 @@ def dashboard(request: Request):
             "review": get_param_review(timeframe=timeframe),
             "chart_json": json.dumps(chart),
         },
+    )
+
+
+@app.get("/dca", response_class=HTMLResponse)
+def dca_page(request: Request):
+    cfg = load_config()
+    result = _guard(run_dca_report)
+    symbols = list(dict.fromkeys([cfg["universe"]["pair"], "BTC/USDT", "ETH/USDT"]))
+    return templates.TemplateResponse(
+        request,
+        "dca.html",
+        {
+            "result": result,
+            "symbols": symbols,
+            "presets": list(ALLOCATION_PRESETS),
+            "timeframes": supported_timeframes(),
+        },
+    )
+
+
+@app.get("/dca/run", response_class=HTMLResponse)
+def dca_run(request: Request):
+    result = _guard(run_dca_report, **_dca_from_query(request.query_params))
+    return templates.TemplateResponse(request, "_dca.html", {"result": result})
+
+
+@app.get("/api/dca")
+def api_dca(request: Request):
+    result = _guard(run_dca_report, **_dca_from_query(request.query_params))
+    return serialize(result)
+
+
+@app.get("/dca/report")
+def dca_report(request: Request):
+    result = _guard(run_dca_report, **_dca_from_query(request.query_params))
+    if not isinstance(result, dict):
+        return result
+    return Response(
+        to_markdown(result),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="dca-report.md"'},
     )
 
 

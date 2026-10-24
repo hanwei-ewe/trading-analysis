@@ -1,0 +1,89 @@
+<div class="dca-summary">
+  <div class="dca-head">
+    <div>
+      <h2>{{ result.symbol }} · {{ result.timeframe }}</h2>
+      <p class="muted">{{ result.chart[0].time[:10] }} → {{ result.chart[-1].time[:10] }} · {{ result.bars }} bars</p>
+    </div>
+    <div class="dca-return">
+      <span class="muted">Total return</span>
+      <b class="{{ 'pos' if result.total_return >= 0 else 'neg' }}">{{ "%.2f"|format(result.total_return * 100) }}%</b>
+    </div>
+  </div>
+
+  <div class="dca-metrics">
+    <div class="kv"><span>CAGR</span><b>{{ "%.2f"|format(result.cagr * 100) }}%</b></div>
+    <div class="kv"><span>Max drawdown</span><b class="neg">{{ "%.2f"|format(result.max_drawdown * 100) }}%</b></div>
+    <div class="kv"><span>Final wealth</span><b>{{ "%.2f"|format(result.final_total_wealth) }}</b></div>
+    <div class="kv"><span>Reserved profit</span><b>{{ "%.2f"|format(result.final_reserve) }}</b></div>
+    <div class="kv"><span>Buys / sells</span><b>{{ result.buys }} / {{ result.sells }}</b></div>
+    <div class="kv"><span>Open lots</span><b>{{ result.open_lot_count }}</b></div>
+    <div class="kv"><span>Exposure</span><b>{{ "%.1f"|format(result.exposure * 100) }}%</b></div>
+    <div class="kv"><span>Buy &amp; hold</span><b>{{ "%.2f"|format(result.buy_hold_return * 100) }}%</b></div>
+  </div>
+
+  <div class="dca-chart-wrap">
+    <div id="dca-chart" class="dca-chart"></div>
+  </div>
+
+  <div class="dca-grid">
+    <div>
+      <h3>Ladder</h3>
+      <table class="dca-table">
+        <thead><tr><th>Drop</th><th>Weight</th><th>Capital</th></tr></thead>
+        <tbody>
+          {% for level in result.levels %}
+          {% set weight = result.allocations[loop.index0] %}
+          <tr>
+            <td>{% if result.level_mode == 'atr' %}{{ "%.1f"|format(level) }} ATR{% else %}{{ "%.1f"|format(level * 100) }}%{% endif %}</td>
+            <td>{{ "%.1f"|format(weight * 100) }}%</td>
+            <td>{{ "%.2f"|format(weight * result.initial_capital) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h3>Rules</h3>
+      <dl class="dca-rules">
+        <dt>Reference</dt><dd>{{ result.reference_mode }}</dd>
+        <dt>Target</dt><dd>{{ result.target_mode }}{% if result.target_mode == 'retrace' %} ({{ "%.1f"|format(result.target_retrace * 100) }}% retrace){% elif result.target_mode == 'atr' %} ({{ "%.1f"|format(result.target_atr) }} ATR){% else %} ({{ "%.1f"|format(result.profit_target * 100) }}%){% endif %}</dd>
+        <dt>Reinvest</dt><dd>{{ "%.0f"|format(result.reinvest_pct * 100) }}% of profitable sales</dd>
+        <dt>Reserve</dt><dd>{{ "%.0f"|format((1 - result.reinvest_pct) * 100) }}% of profitable sales</dd>
+        <dt>Trend filter</dt><dd>{{ result.trend_filter }}</dd>
+        <dt>Costs</dt><dd>0.10% fee · 0.05% slippage</dd>
+      </dl>
+    </div>
+  </div>
+
+  {% if result.sell_trades %}
+  <h3>Recent exits</h3>
+  <div class="dca-table-wrap">
+    <table class="dca-table">
+      <thead><tr><th>Entry</th><th>Exit</th><th>Entry px</th><th>Exit px</th><th>PnL</th><th>R</th><th>Bars</th></tr></thead>
+      <tbody>
+        {% for trade in result.sell_trades[-8:] %}
+        <tr>
+          <td>{{ trade.entry_time[:10] }}</td>
+          <td>{{ trade.exit_time[:10] }}</td>
+          <td>{{ "%.2f"|format(trade.entry_price) }}</td>
+          <td>{{ "%.2f"|format(trade.exit_price) }}</td>
+          <td class="{{ 'pos' if trade.pnl >= 0 else 'neg' }}">{{ "%.2f"|format(trade.pnl) }}</td>
+          <td>{{ "%.2f"|format(trade.r_multiple) }}</td>
+          <td>{{ trade.bars_held }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <details class="dca-assumptions">
+    <summary>Assumptions and limits</summary>
+    <ul>
+      {% for item in result.assumptions %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+  </details>
+</div>
+<script>
+  if (window.renderDcaChart) window.renderDcaChart({{ result.chart | tojson }});
+</script>

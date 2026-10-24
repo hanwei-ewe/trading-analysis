@@ -182,6 +182,67 @@ def test_backtest_symbol_override_offline():
     assert result["symbol"] == "BTC/USDT"
 
 
+def test_backtest_long_only_has_no_shorts():
+    result = run_backtest(
+        df=_df(),
+        days=120,
+        use_mtf=False,
+        long_only=True,
+        initial_equity=1000.0,
+        risk_pct=5.0,
+    )
+    assert result["long_only"] is True
+    assert result["metrics"]["initial_equity"] == 1000.0
+    assert all(t["side"] == "LONG" for t in result["trades"])
+    assert min(c["equity"] for c in result["equity_curve"]) >= 0
+
+
+def test_backtest_cash_controls_prevent_negative_equity():
+    result = run_backtest(
+        df=_df(),
+        days=120,
+        use_mtf=False,
+        long_only=True,
+        initial_equity=1000.0,
+        risk_pct=100.0,
+        cash_buffer=0.02,
+        min_notional=5.0,
+    )
+    assert result["risk_pct"] == 100.0
+    assert result["cash_buffer"] == 0.02
+    assert min(c["equity"] for c in result["equity_curve"]) >= 0
+
+
+def test_indicator_overrides_are_applied():
+    result = run_backtest(
+        df=_df(),
+        days=60,
+        use_mtf=False,
+        indicator_overrides={
+            "indicators": {"ema": [10, 30, 100], "rsi": 7}
+        },
+    )
+    assert result["indicator_overrides"]["indicators"]["ema"] == [10, 30, 100]
+    assert result["indicator_overrides"]["indicators"]["rsi"] == 7
+    assert result["metrics"]["trades"] >= 0
+
+
+def test_backtest_window_bounds():
+    df = _df()
+    start = df.index[300]
+    end = df.index[900]
+    result = run_backtest(
+        df=df,
+        days=365,
+        use_mtf=False,
+        window_start=start,
+        window_end=end,
+    )
+    assert pd.Timestamp(result["metrics"]["start"]) >= start
+    assert pd.Timestamp(result["metrics"]["end"]) < end
+    assert result["metrics"]["bars"] > 0
+
+
 def test_backtest_limit_mode_runs_offline():
     result = run_backtest(
         df=_df(), days=30, use_mtf=False, entry_mode="limit", limit_bars=5

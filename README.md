@@ -20,6 +20,9 @@ engine, and explains the reasoning in plain language through a web dashboard.
   market-context coaching.
 - **Parameter review** — errors/warnings/tips for inconsistent or redundant settings,
   plus a "how to choose parameters" guide.
+- **DCA ladder research** — spot-only capital ladder with fixed/Fibonacci/geometric/
+  ATR drop levels, allocation presets, anchor/rolling/ATH references, adaptive
+  targets, EMA200 filter, profit reserve/reinvestment, and a downloadable report.
 
 ## Tech stack
 
@@ -88,6 +91,27 @@ selection, and a hard 1d filter mostly reduced activity rather than improving
 the edge. Widening the stop (1.5-2x) and targeting 3R removed most of the cost
 drag and moved 4h positive in-sample, but the result is trade-concentrated.
 
+### DCA ladder
+
+The separate `/dca` page backtests a spot-only capital ladder and can download a
+Markdown/JSON report. The default is Fibonacci levels, deep allocation, anchor
+reference, EMA200 filter, 15% target, and 50% profit reinvestment.
+
+Canonical 5-year ETH results (pre-window anchor, 0.10% fee + 0.05% slippage):
+
+| Strategy | Return | Max DD | Calmar |
+| --- | ---: | ---: | ---: |
+| Trend `rsi21` | +49.99% | -8.44% | 1.00 |
+| DCA `fib_deep_percent15` | +61.72% | -18.56% | 0.54 |
+| DCA `fib_deep_retrace50` | +90.93% | -29.29% | 0.47 |
+| 50/50 blend `fib_deep_percent15` + trend | +89.35% | -11.36% | 1.20 |
+
+DCA wins raw return on ETH but loses risk-adjusted to the trend strategy. A 50%
+blend improves ETH Calmar (1.20 vs 1.00) and the 2024-2026 test (+25.58% vs
++22.67%), but hurts BTC, where DCA made 0% in the test. With a realistic
+pre-window anchor, DCA is an accumulation/regime tool, not a standalone
+replacement. See `/dca` for the interactive report.
+
 Walk-forward over 3 years (4h, 180d train / 90d test) showed **unstable**
 parameter selection (+4.5R OOS, PF 1.03): train-window R is a noisy selector,
 and the fixed 1x/2R baseline was marginal (+0.045R/trade, PF 1.07). A 5-year
@@ -111,14 +135,19 @@ regime-dependent, but 2x/3R is the only config positive on both assets.
 | GET | `/api/analysis`, `/api/explain` | Analysis / explanations (JSON) |
 | GET | `/analysis/view`, POST `/analysis/run` | Analysis panel (HTML) |
 | GET | `/params/review` | Parameter check (HTML) |
+| GET | `/dca` | DCA ladder page |
+| GET | `/dca/run` | DCA result partial (HTML) |
+| GET | `/dca/report` | Downloadable DCA report (Markdown) |
+| GET | `/api/dca` | DCA result (JSON) |
 
 ## Project layout
 
 ```
 src/     engine: config, exchange, data, indicators, analysis,
-         explanations, params, pipeline, report, journal, backtest
+         explanations, params, pipeline, report, journal, backtest,
+         dca, dca_report, portfolio, sweep
 web/     FastAPI app, Jinja templates, static assets (incl. vendored libs)
-tests/   indicator / engine / parameter / backtest tests
+tests/   indicator / engine / parameter / backtest / DCA / portfolio tests
 ```
 
 ## Docs
@@ -126,6 +155,7 @@ tests/   indicator / engine / parameter / backtest tests
 - `RULES.md` — strict operating constraints (Level 0).
 - `DESIGN.md` — architecture and method.
 - `PLAN.md` — roadmap.
+- `DCA_REPORT.md` — DCA ladder study results and caveats.
 
 ## Tests
 

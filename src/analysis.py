@@ -296,6 +296,71 @@ def analyze(
                 f"{'rising' if rising else 'falling'} over the last {obl} bars",
             )
 
+    if "pa" in active:
+        prev = ind.iloc[pos - 1]
+        o = float(last["open"])
+        h = float(last["high"])
+        l = float(last["low"])
+        c = float(last["close"])
+        po = float(prev["open"])
+        pc = float(prev["close"])
+        body = max(abs(c - o), 1e-12)
+        bull_engulf = c > o and pc < po and c >= po and o <= pc
+        bear_engulf = c < o and pc > po and c <= po and o >= pc
+        lower_wick = min(o, c) - l
+        upper_wick = h - max(o, c)
+        bull_pin = lower_wick > 2.0 * body and lower_wick > upper_wick
+        bear_pin = upper_wick > 2.0 * body and upper_wick > lower_wick
+        if bull_engulf or bull_pin:
+            pa_vote = 1
+        elif bear_engulf or bear_pin:
+            pa_vote = -1
+        else:
+            pa_vote = 0
+        add_check(
+            "pa",
+            "Price action (engulfing/pin bar)",
+            pa_vote,
+            (
+                f"{'bullish' if pa_vote > 0 else 'bearish' if pa_vote < 0 else 'none'}"
+                f" candle, body {body:.2f}, wicks {lower_wick:.2f}/{upper_wick:.2f}"
+            ),
+        )
+
+    if "breakout" in active:
+        bp = int(cfg["indicators"].get("breakout", 20))
+        if pos >= bp:
+            prior_high = float(ind["high"].iloc[pos - bp:pos].max())
+            prior_low = float(ind["low"].iloc[pos - bp:pos].min())
+            if price > prior_high:
+                breakout_vote = 1
+            elif price < prior_low:
+                breakout_vote = -1
+            else:
+                breakout_vote = 0
+            add_check(
+                "breakout",
+                f"Donchian breakout ({bp})",
+                breakout_vote,
+                f"close {price:,.2f} vs {prior_low:,.2f}-{prior_high:,.2f}",
+            )
+
+    if "extension" in active:
+        threshold = float(cfg["indicators"].get("extension_atr", 2.5))
+        dist = (price - ema_mid) / atr_v if atr_v else 0.0
+        if dist > threshold:
+            extension_vote = -1
+        elif dist < -threshold:
+            extension_vote = 1
+        else:
+            extension_vote = 0
+        add_check(
+            "extension",
+            f"Distance from EMA{periods[1]} ({threshold:.1f} ATR)",
+            extension_vote,
+            f"{dist:+.2f} ATR from EMA{periods[1]}",
+        )
+
     for htf in htf_checks or []:
         checks.append(dict(htf))
 
