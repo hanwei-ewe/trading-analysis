@@ -134,7 +134,7 @@ competitive with the 4h core.
 
 ### Support/resistance and oscillator checks
 
-- Swing-pivot support/resistance is implemented in `src/analysis.py`; the
+- Swing-pivot support/resistance is implemented in `src/trading_analysis/analysis/`; the
   nearest support below price and resistance above price anchor entry proposals
   and stops.
 - `pa` (engulfing/pin bar), `breakout` (Donchian 20), and `extension` (distance
@@ -230,6 +230,6 @@ Artifacts:
 - `results/study_15m_sr.csv`
 - `scripts/dca_study.py`
 - `scripts/frequency_study.py`
-- `src/dca.py`
-- `src/dca_report.py`
-- `src/portfolio.py`
+- `src/trading_analysis/strategies/dca/`
+- `src/trading_analysis/reporting/dca.py`
+- `src/trading_analysis/analytics/portfolio.py`

@@ -1,6 +1,6 @@
 # DESIGN.md — Trading Analysis Agent
 
-_Architecture, method, and conventions. Version 2.7 — 2026-10-24._
+_Architecture, method, and conventions. Version 2.8 — 2026-10-24._
 _Companion to RULES.md (constraints) and PLAN.md (roadmap)._
 
 ## 1. Broker & Data Source
@@ -171,45 +171,45 @@ Packaging & running (canonical: Docker):
 - Container runs as `${UID:-1000}:${GID:-1000}` so bind-mounted cache/journal
   files are owned by the host user (no root-owned files).
 - Local fast path without Docker: `pip install --target .vendor -r requirements.txt`,
-  then `./dev.sh python -m src.pipeline` or `./dev.sh python -m uvicorn web.api:app`.
+  then `./dev.sh python -m trading_analysis.app.pipeline` or `./dev.sh python -m uvicorn web.api:app`.
 
-## 6. Project Layout (proposed)
+## 6. Project Layout
 
 ```
-trading_analysis/
-├── RULES.md            # strict rules
-├── DESIGN.md           # this file
-├── PLAN.md             # roadmap
-├── config.yaml         # pair, timeframes, indicator/strategy params, costs
-├── requirements.txt    # python dependencies
-├── Dockerfile          # canonical runtime (python:3.12-slim)
-├── docker-compose.yml  # web service, restart policy, volumes
-├── dev.sh              # local runner (uses .vendor, falls back to python3)
+.
+├── RULES.md                 # strict operating constraints
+├── DESIGN.md                # this file
+├── PLAN.md                  # roadmap
+├── DCA_REPORT.md            # DCA study report
+├── config.yaml              # pair, timeframes, indicators, risk, paths
+├── pyproject.toml           # package metadata + CLI entry points
+├── requirements.txt         # runtime dependencies for Docker
+├── Dockerfile               # canonical runtime (python:3.12-slim)
+├── docker-compose.yml       # web service, restart policy, volumes
+├── dev.sh                   # local runner (adds src + .vendor to PYTHONPATH)
 ├── src/
-│   ├── exchange.py     # CCXT adapter (Binance)
-│   ├── data.py         # OHLCV fetch + caching
-│   ├── indicators.py   # EMA, RSI, MACD, ATR, Bollinger, VWAP, Stochastic, ADX, OBV
-│   ├── strategy/
-│   │   ├── base.py     # Strategy interface (generate_signals)
-│   │   └── <name>.py   # concrete strategies
-│   ├── risk.py         # sizing + RULES.md §5 limits
-│   ├── backtest.py     # event-driven backtest engine
-│   ├── execution/
-│   │   ├── base.py     # Execution interface
-│   │   ├── paper.py    # simulated fills
-│   │   └── live.py     # real orders (deferred, Level >= 1)
-│   ├── analysis.py     # framework: regime→momentum→vol→levels→volume→confluence
-│   ├── explanations.py # rule → plain-language explanations + indicator glossary
-│   ├── metrics.py      # backtest performance metrics
-│   ├── dca.py          # DCA capital-ladder engine
-│   ├── dca_report.py   # DCA report/service layer
-│   ├── portfolio.py    # curve blending + curve metrics
-│   └── report.py       # output formatting (MD + JSON)
+│   └── trading_analysis/    # importable library
+│       ├── config.py
+│       ├── indicators.py
+│       ├── data/            # exchange adapter, cache, timeframe helpers
+│       ├── analysis/        # levels + confluence engine
+│       ├── strategies/
+│       │   ├── backtest/    # checks, features, engine, metrics, runner, report, CLI
+│       │   ├── dca/         # levels, engine, report
+│       │   ├── walkforward.py
+│       │   └── sweep.py
+│       ├── analytics/       # shared metrics + curve blending
+│       ├── reporting/       # Markdown, explanations, params, journal
+│       └── app/             # UI-facing application service
 ├── web/
-│   ├── api.py          # FastAPI endpoints
-│   └── static/         # frontend assets
-├── results/            # backtest outputs, equity curves
-├── journal/            # decision log (per analysis cycle)
+│   ├── api.py               # FastAPI composition root
+│   ├── routes/              # analysis, chart, DCA routes
+│   ├── query.py             # query-string parsing
+│   ├── templates/           # Jinja templates
+│   └── static/              # frontend assets (incl. vendored libs)
+├── scripts/                 # reproducible research scripts
+├── results/                 # backtest outputs, equity curves (gitignored)
+├── journal/                 # decision log (gitignored)
 └── tests/
 ```
 
@@ -269,7 +269,7 @@ Implementation notes (first slice):
   distance from the fill (0.75 tighter, 2.0 wider) and `--target-r` fixes the
   target at an R-multiple of the adjusted risk, overriding `--target`. Both are
   applied at fill time from the signal and fill prices only.
-- Walk-forward (`src/walkforward.py`): rolls disjoint train/test windows,
+- Walk-forward (`src/trading_analysis/strategies/walkforward.py`): rolls disjoint train/test windows,
   selects `(stop_mult, target_r)` on each train window by total R subject to a
   minimum trade count, then scores that combo on the next unseen window. Trades
   are assigned by entry time; the report also shows fixed 1x/2R and 2x/3R
@@ -277,11 +277,11 @@ Implementation notes (first slice):
 - Sizing: `max_risk_pct` of current equity per trade, notional capped at equity.
 - Costs: taker fee + slippage on both legs (configurable on the CLI).
 - Outputs: `results/backtest_*` JSON + Markdown + equity/trade CSVs.
-- CLI: `python -m src.backtest --timeframe 1h --days 365`
+- CLI: `python -m trading_analysis.strategies.backtest --timeframe 1h --days 365`
   `[--checks default|all|ids] [--entry market|limit] [--limit-bars N]`
   `[--target proposal|rr] [--regime-filter none|aligned|loose]`
   `[--stop-mult X] [--target-r R] [--no-mtf]`.
-- Walk-forward CLI: `python -m src.walkforward --timeframe 4h --days 1095`
+- Walk-forward CLI: `python -m trading_analysis.strategies.walkforward --timeframe 4h --days 1095`
   `--train-days 180 --test-days 90 [--step-days N] [--min-train-trades N]`.
 
 ## 9. Execution Path (deferred)
@@ -329,7 +329,7 @@ Method conventions:
 #### Parameter review & guidance
 
 There is no single "correct" setting, but parameters can be internally
-inconsistent or unexamined. `src/params.py` (pure, deterministic) reviews the
+inconsistent or unexamined. `src/trading_analysis/reporting/params.py` (pure, deterministic) reviews the
 current settings against the chart timeframe and available candle count and
 returns findings in three levels — **never blocking** the user:
 
@@ -417,7 +417,7 @@ from the same inputs. Deterministic text is preferred here because (a) an
 explanation that contradicts the engine erodes trust, and (b) it is free,
 reproducible, and cannot hallucinate.
 
-`src/explanations.py` (pure functions, no I/O) turns each rule's inputs into
+`src/trading_analysis/reporting/explanations.py` (pure functions, no I/O) turns each rule's inputs into
 structured explanation records:
 
 - `indicator` — name + one-line plain-language meaning (from a glossary).
@@ -515,7 +515,7 @@ narrative → optional agent.
 
 A separate research view, not part of the live signal path.
 
-- **Engine:** `src/dca.py` simulates a spot-only ladder. Each level is a
+- **Engine:** `src/trading_analysis/strategies/dca/` simulates a spot-only ladder. Each level is a
   fraction below a reference; capital is allocated across levels; each lot has
   its own profit target; profitable exits may reserve or reinvest.
 - **Levels:** fixed gaps, Fibonacci retracements, trend-leg Fibonacci
@@ -530,7 +530,7 @@ A separate research view, not part of the live signal path.
 - **Accounting:** fees 0.10% + slippage 0.05% on entries/exits; unspent cash is
   idle; reserve is tracked separately; open lots are marked to market; no
   leverage, shorts, or deposits.
-- **Blending:** `src/portfolio.py` aligns DCA `total_wealth` and trend `equity`
+- **Blending:** `src/trading_analysis/analytics/portfolio.py` aligns DCA `total_wealth` and trend `equity`
   curves on their inner join, normalizes weights, and computes CAGR/Sharpe/DD/
   Calmar. Trend risk is grossed up by `1/(1-w_dca)` before weighting so the
   combined initial capital stays $1,000.

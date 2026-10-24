@@ -20,9 +20,10 @@ engine, and explains the reasoning in plain language through a web dashboard.
   market-context coaching.
 - **Parameter review** — errors/warnings/tips for inconsistent or redundant settings,
   plus a "how to choose parameters" guide.
-- **DCA ladder research** — spot-only capital ladder with fixed/Fibonacci/geometric/
-  ATR drop levels, allocation presets, anchor/rolling/ATH references, adaptive
-  targets, EMA200 filter, profit reserve/reinvestment, and a downloadable report.
+- **DCA ladder research** — spot-only capital ladder with fixed/Fibonacci/
+  trend-Fibonacci/geometric/ATR drop levels, allocation presets,
+  anchor/rolling/ATH references, adaptive targets, EMA200 filter, profit
+  reserve/reinvestment, and a downloadable report.
 
 ## Tech stack
 
@@ -42,7 +43,8 @@ Open <http://localhost:8000>. If port 8000 is taken, pick another:
 
 ### Local (no Docker)
 
-Dependencies live in `.vendor`; `dev.sh` puts it on `PYTHONPATH`:
+Dependencies live in `.vendor`; `dev.sh` adds `.vendor` and `src` to
+`PYTHONPATH`:
 
 ```bash
 ./dev.sh python -m uvicorn web.api:app --host 127.0.0.1 --port 8000
@@ -71,10 +73,10 @@ Validate the signal on history with modeled costs and no look-ahead (signals on
 closed bars, market fills at the next bar's open):
 
 ```bash
-./dev.sh python -m src.backtest --timeframe 1h --days 365
-./dev.sh python -m src.backtest --timeframe 4h --days 365 --target rr
-./dev.sh python -m src.backtest --timeframe 1h --days 365 --entry limit --limit-bars 5
-./dev.sh python -m src.walkforward --timeframe 4h --days 1095
+./dev.sh python -m trading_analysis.strategies.backtest --timeframe 1h --days 365
+./dev.sh python -m trading_analysis.strategies.backtest --timeframe 4h --days 365 --target rr
+./dev.sh python -m trading_analysis.strategies.backtest --timeframe 1h --days 365 --entry limit --limit-bars 5
+./dev.sh python -m trading_analysis.strategies.walkforward --timeframe 4h --days 1095
 ```
 
 Options: `--checks default|all|rsi,macd,...`, `--entry market|limit`,
@@ -142,12 +144,31 @@ regime-dependent, but 2x/3R is the only config positive on both assets.
 
 ## Project layout
 
+The importable library lives under `src/trading_analysis/`; the web app is a
+separate presentation package under `web/`.
+
 ```
-src/     engine: config, exchange, data, indicators, analysis,
-         explanations, params, pipeline, report, journal, backtest,
-         dca, dca_report, portfolio, sweep
-web/     FastAPI app, Jinja templates, static assets (incl. vendored libs)
-tests/   indicator / engine / parameter / backtest / DCA / portfolio tests
+src/trading_analysis/
+  config.py              configuration + project paths
+  indicators.py          pure indicator functions
+  data/                  exchange adapter, OHLCV cache, timeframe helpers
+  analysis/              level detection + confluence engine
+  strategies/
+    backtest/            checks, features, engine, metrics, runner, report, CLI
+    dca/                 DCA levels, engine, report
+    walkforward.py       walk-forward validation
+    sweep.py             parallel parameter sweeps
+  analytics/             shared performance metrics + curve blending
+  reporting/             analysis/DCA Markdown, explanations, params, journal
+  app/                   UI-facing application service (pipeline)
+web/
+  api.py                 FastAPI composition root
+  routes/                analysis, chart, and DCA routes
+  query.py               query-string parsing
+  templates/             Jinja templates
+  static/                frontend assets (incl. vendored libs)
+scripts/                 reproducible research scripts
+tests/                   indicator / engine / strategy / DCA / metrics tests
 ```
 
 ## Docs

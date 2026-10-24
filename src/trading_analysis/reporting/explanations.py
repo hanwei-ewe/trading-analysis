@@ -1,4 +1,4 @@
-from . import indicators as ind
+from .. import indicators as ind
 
 GLOSSARY = {
     "ema": {

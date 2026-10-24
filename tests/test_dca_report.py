@@ -1,12 +1,12 @@
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 import numpy as np
 import pandas as pd
 
-from src.dca_report import run_dca_report, serialize, to_markdown
+from trading_analysis.reporting.dca import run_dca_report, serialize, to_markdown
 
 
 def _v_shape(n=420):

@@ -3,16 +3,16 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
 import pandas as pd
 
-from src.backtest import run_backtest
-from src.config import load_config
-from src.data import load_history
-from src.dca import run_dca
-from src.exchange import get_adapter
-from src.portfolio import blend_curves, curve_metrics
+from trading_analysis.strategies.backtest import run_backtest
+from trading_analysis.config import load_config
+from trading_analysis.data import load_history
+from trading_analysis.strategies.dca import run_dca
+from trading_analysis.data import get_adapter
+from trading_analysis.analytics.portfolio import blend_curves, curve_metrics
 
 FIB = [0.236, 0.382, 0.5, 0.618, 0.786]
 FIXED = [0.1, 0.2, 0.3, 0.4, 0.5]

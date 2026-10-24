@@ -1,11 +1,11 @@
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 import pandas as pd
 
-from src.portfolio import blend_curves, curve_metrics
+from trading_analysis.analytics.portfolio import blend_curves, curve_metrics
 
 
 def _curve(values, start="2024-01-01", freq="4h"):

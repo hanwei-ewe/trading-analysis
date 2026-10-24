@@ -1,12 +1,12 @@
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 import numpy as np
 import pandas as pd
 
-from src import indicators as ind
+from trading_analysis import indicators as ind
 
 
 def test_ema_constant_series():

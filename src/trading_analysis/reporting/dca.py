@@ -1,10 +1,10 @@
 import json
 from datetime import datetime, timezone
 
-from .config import load_config, resolve_path
-from .data import load_history
-from .dca import FIB_LEVELS, run_dca
-from .exchange import get_adapter
+from ..config import load_config, resolve_path
+from ..data import get_adapter, load_history
+from ..strategies.dca import FIB_LEVELS, run_dca
+from .serialization import json_ready
 
 ALLOCATION_PRESETS = {
     "equal": [0.20, 0.20, 0.20, 0.20, 0.20],
@@ -209,20 +209,7 @@ def to_markdown(result):
 
 
 def serialize(result):
-    def clean(value):
-        if isinstance(value, dict):
-            return {key: clean(item) for key, item in value.items()}
-        if isinstance(value, list):
-            return [clean(item) for item in value]
-        if isinstance(value, (datetime,)):
-            return value.isoformat()
-        if hasattr(value, "isoformat"):
-            return value.isoformat()
-        if isinstance(value, float) and (value != value or value in (float("inf"), float("-inf"))):
-            return None
-        return value
-
-    return clean(result)
+    return json_ready(result)
 
 
 def save_report(result, config_path=None):

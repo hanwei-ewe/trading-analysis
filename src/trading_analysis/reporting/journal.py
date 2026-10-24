@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from .config import load_config, resolve_path
+from ..config import load_config, resolve_path
 
 
 def write(result, config_path=None):

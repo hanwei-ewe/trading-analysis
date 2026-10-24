@@ -1,13 +1,13 @@
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 import numpy as np
 import pandas as pd
 
-from src.analysis import analyze
-from src.backtest import (
+from trading_analysis.analysis import analyze
+from trading_analysis.strategies.backtest import (
     ALL_CHECKS,
     _adjust_stop,
     _align_bias,
@@ -22,7 +22,7 @@ from src.backtest import (
     _target_price,
     run_backtest,
 )
-from src.config import load_config
+from trading_analysis.config import load_config
 
 CFG = load_config()
 

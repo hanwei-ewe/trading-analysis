@@ -2,10 +2,10 @@ import copy
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
-from src.config import load_config
-from src.params import review
+from trading_analysis.config import load_config
+from trading_analysis.reporting.params import review
 
 CFG = load_config()
 

@@ -1,13 +1,13 @@
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 import numpy as np
 import pandas as pd
 
-from src.analysis import _build_signal, analyze
-from src.config import load_config
+from trading_analysis.analysis import _build_signal, analyze
+from trading_analysis.config import load_config
 
 CFG = load_config()
 

@@ -1,12 +1,12 @@
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 import numpy as np
 import pandas as pd
 
-from src.walkforward import (
+from trading_analysis.strategies.walkforward import (
     fold_windows,
     run_walk_forward,
     summarize_trades,

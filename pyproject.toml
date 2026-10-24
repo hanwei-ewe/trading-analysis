@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trading-analysis"
+version = "0.1.0"
+description = "Analysis-only crypto market research and backtesting toolkit"
+requires-python = ">=3.12"
+dependencies = [
+    "ccxt>=4.4",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "pyyaml>=6.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = []
+
+[project.scripts]
+trading-backtest = "trading_analysis.strategies.backtest.cli:main"
+trading-walkforward = "trading_analysis.strategies.walkforward:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
