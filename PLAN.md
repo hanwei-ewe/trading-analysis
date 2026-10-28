@@ -1,6 +1,6 @@
 # PLAN.md — Roadmap
 
-_Version 2.9 — 2026-10-24._
+_Version 3.0 — 2026-10-28._
 _Companion to RULES.md (constraints) and DESIGN.md (architecture)._
 
 ## Phase 1 — Analysis + Foundations (done)
@@ -54,8 +54,11 @@ Milestones:
 - [x] `strategies/base.py`: pluggable `Strategy` interface and registry.
 - [ ] Add more price overlays (SMA/WMA/Keltner/Donchian/Ichimoku) on the plugin
       contract without touching the chart core.
-- [ ] `risk.py`: sizing + RULES.md §5 limits, decoupled from strategies.
+- [x] `risk.py`: percent-risk sizing behind `RiskModel`/`RISK_MODELS`, decoupled
+      from strategies; cash-buffer, min-notional, and equity-floor checks remain.
 - [x] `data.load_history`: paged historical OHLCV + warmup for long windows.
+- [x] Exchange adapter registry (`data.base.ExchangeAdapter`/`EXCHANGES`);
+      Binance is registered and selected by `exchange.id`.
 - [x] `backtest.py`: event-driven engine, no look-ahead bias, modeled costs.
 - [x] `metrics.py`: return, Sharpe/Sortino, max drawdown, win rate, profit
       factor, benchmark vs buy-and-hold ETH (currently inside `backtest.py`;
@@ -63,6 +66,8 @@ Milestones:
 - [x] `results/`: persist config, params, metrics, equity curves, trades.
 - [x] Long-only spot risk engine: percent risk sizing, cash buffer, minimum
       notional, no shorts/leverage, equity floor.
+- [x] Execution model registry (`ExecutionModel`/`EXECUTION_MODELS`); default
+      next-open/slippage/limit/stop-first behavior is preserved.
 - [x] `rsi21` trend candidate: 4h, RSI 21, 2x stop, 4R target, MTF on; ETH 5y
       +49.99% (DD -8.44%), BTC +46.05% (DD -8.45%).
 - [x] DCA capital-ladder engine: fixed/Fibonacci/geometric/ATR/trend-Fibonacci

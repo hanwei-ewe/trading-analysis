@@ -22,7 +22,10 @@ _DF_TTL_SECONDS = 20.0
 
 
 def _adapter(cfg):
-    return get_adapter(market_type=cfg["exchange"]["market_type"])
+    return get_adapter(
+        market_type=cfg["exchange"]["market_type"],
+        exchange_id=cfg["exchange"].get("id", "binance"),
+    )
 
 
 def _key_lock(key):

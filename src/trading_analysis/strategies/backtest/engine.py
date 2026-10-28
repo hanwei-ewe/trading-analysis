@@ -1,50 +1,23 @@
 import pandas as pd
 
 from .checks import _warmup_bars
+from .execution import DEFAULT_EXECUTION, get_execution_model
 from .features import _regime_allows
+from .risk import get_risk_model
 
 
 def _fill(raw, side, slippage, entering):
-    if entering:
-        return raw * (1.0 + slippage) if side == "LONG" else raw * (1.0 - slippage)
-    return raw * (1.0 - slippage) if side == "LONG" else raw * (1.0 + slippage)
+    return DEFAULT_EXECUTION.fill(raw, side, slippage, entering)
 
 
 def _exit_check(position, bar_open, bar_high, bar_low, target_ok=True):
-    side = position["side"]
-    stop = position["stop"]
-    target = position["target"]
-    if side == "LONG":
-        if bar_open <= stop:
-            return bar_open, "stop"
-        if bar_low <= stop:
-            return stop, "stop"
-        if target_ok:
-            if bar_open >= target:
-                return bar_open, "target"
-            if bar_high >= target:
-                return target, "target"
-    else:
-        if bar_open >= stop:
-            return bar_open, "stop"
-        if bar_high >= stop:
-            return stop, "stop"
-        if target_ok:
-            if bar_open <= target:
-                return bar_open, "target"
-            if bar_low <= target:
-                return target, "target"
-    return None, None
+    return DEFAULT_EXECUTION.exit_check(
+        position, bar_open, bar_high, bar_low, target_ok
+    )
 
 
 def _limit_fill(side, limit, bar_open, bar_high, bar_low):
-    if side == "LONG":
-        if bar_low <= limit:
-            return min(bar_open, limit)
-    else:
-        if bar_high >= limit:
-            return max(bar_open, limit)
-    return None
+    return DEFAULT_EXECUTION.limit_fill(side, limit, bar_open, bar_high, bar_low)
 
 
 def _target_price(side, entry, stop, proposal_t1, cfg, target_mode, target_r=None):
@@ -65,19 +38,30 @@ def _adjust_stop(side, entry, stop, mult):
 
 
 def _position_units(equity, risk_pct, risk_per_unit, entry, cash_buffer, min_notional):
-    if equity <= 0 or risk_per_unit <= 0 or entry <= 0:
-        return 0.0
-    risk_amount = equity * risk_pct / 100.0
-    max_notional = equity * (1.0 - cash_buffer)
-    units = min(risk_amount / risk_per_unit, max_notional / entry)
-    if units * entry < min_notional:
-        return 0.0
-    return units
+    return get_risk_model("percent").position_units(
+        equity,
+        risk_pct,
+        risk_per_unit,
+        entry,
+        cash_buffer,
+        min_notional,
+    )
 
 
-def _close(position, raw_exit, exit_time, exit_index, equity, fee_rate, slippage, reason):
+def _close(
+    position,
+    raw_exit,
+    exit_time,
+    exit_index,
+    equity,
+    fee_rate,
+    slippage,
+    reason,
+    execution=None,
+):
     side = position["side"]
-    exit_price = _fill(raw_exit, side, slippage, entering=False)
+    execution = execution or DEFAULT_EXECUTION
+    exit_price = execution.fill(raw_exit, side, slippage, entering=False)
     entry = position["entry"]
     units = position["units"]
     gross = units * (exit_price - entry) if side == "LONG" else units * (entry - exit_price)
@@ -124,10 +108,14 @@ def _run_engine(
     cash_buffer=0.02,
     min_notional=5.0,
     window_end=None,
+    risk_model="percent",
+    execution_model="default",
 ):
     risk_pct = float(
         risk_pct if risk_pct is not None else cfg["risk"]["max_risk_pct"]
     )
+    risk = get_risk_model(risk_model)
+    execution = get_execution_model(execution_model)
     cash_buffer = float(cash_buffer)
     n = len(ind)
     warm = _warmup_bars(cfg)
@@ -168,14 +156,22 @@ def _run_engine(
                 and prev_bias != position["side"]
             ):
                 equity, trade = _close(
-                    position, bar_open, ts, i, equity, fee_rate, slippage, "signal"
+                    position,
+                    bar_open,
+                    ts,
+                    i,
+                    equity,
+                    fee_rate,
+                    slippage,
+                    "signal",
+                    execution=execution,
                 )
                 trades.append(trade)
                 position = None
                 pending = None
                 exited_this_bar = True
             else:
-                raw_exit, reason = _exit_check(
+                raw_exit, reason = execution.exit_check(
                     position, bar_open, bar_high, bar_low
                 )
                 if raw_exit is not None:
@@ -188,6 +184,7 @@ def _run_engine(
                         fee_rate,
                         slippage,
                         reason,
+                        execution=execution,
                     )
                     trades.append(trade)
                     position = None
@@ -206,11 +203,13 @@ def _run_engine(
                 if pending is not None:
                     side = pending["side"]
                     original_stop = pending["stop"]
-                    fill_raw = _limit_fill(
+                    fill_raw = execution.limit_fill(
                         side, pending["limit"], bar_open, bar_high, bar_low
                     )
                     if fill_raw is not None:
-                        entry = _fill(fill_raw, side, slippage, entering=True)
+                        entry = execution.fill(
+                            fill_raw, side, slippage, entering=True
+                        )
                         stop = _adjust_stop(
                             side, entry, original_stop, stop_mult
                         )
@@ -228,7 +227,7 @@ def _run_engine(
                                 target_mode,
                                 target_r,
                             )
-                            units = _position_units(
+                            units = risk.position_units(
                                 equity,
                                 risk_pct,
                                 risk_per_unit,
@@ -255,7 +254,7 @@ def _run_engine(
             elif prev_signal is not None:
                 side = prev_signal["direction"]
                 original_stop = float(prev_signal["stop"])
-                entry = _fill(bar_open, side, slippage, entering=True)
+                entry = execution.fill(bar_open, side, slippage, entering=True)
                 stop = _adjust_stop(side, entry, original_stop, stop_mult)
                 risk_per_unit = abs(entry - stop)
                 target = _target_price(
@@ -278,7 +277,7 @@ def _run_engine(
                         else target < bar_open < original_stop
                     )
                 if valid and risk_per_unit > 0:
-                    units = _position_units(
+                    units = risk.position_units(
                         equity,
                         risk_pct,
                         risk_per_unit,
@@ -302,12 +301,20 @@ def _run_engine(
                         entered_this_bar = True
 
         if entered_this_bar and position is not None:
-            raw_exit, reason = _exit_check(
+            raw_exit, reason = execution.exit_check(
                 position, bar_open, bar_high, bar_low, target_ok
             )
             if raw_exit is not None:
                 equity, trade = _close(
-                    position, raw_exit, ts, i, equity, fee_rate, slippage, reason
+                    position,
+                    raw_exit,
+                    ts,
+                    i,
+                    equity,
+                    fee_rate,
+                    slippage,
+                    reason,
+                    execution=execution,
                 )
                 trades.append(trade)
                 position = None
@@ -393,6 +400,7 @@ def _run_engine(
             fee_rate,
             slippage,
             "end",
+            execution=execution,
         )
         trades.append(trade)
         curve[-1]["equity"] = equity

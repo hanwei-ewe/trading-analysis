@@ -9,7 +9,15 @@ import pandas as pd
 from trading_analysis.analysis import CHECKS, Check, CheckResult, analyze
 from trading_analysis.app.pipeline import _compute_oscillators
 from trading_analysis.config import load_config
+from trading_analysis.data import EXCHANGES, ExchangePlugin, get_adapter
 from trading_analysis.strategies import STRATEGIES
+from trading_analysis.strategies.backtest import (
+    EXECUTION_MODELS,
+    RISK_MODELS,
+    DefaultExecution,
+    RiskModel,
+    run_backtest,
+)
 from trading_analysis.strategies.dca import (
     ALLOCATION_MODES,
     LEVEL_MODES,
@@ -91,6 +99,42 @@ class OnePercentTarget(TargetMode):
         return fill * 1.01
 
 
+class FakeExchangeAdapter:
+    def __init__(self, market_type="spot", **_):
+        self.market_type = market_type
+
+    def fetch_ohlcv(self, symbol, timeframe, limit=500, since=None, retries=4):
+        return []
+
+    def fetch_ticker(self, symbol):
+        return {}
+
+    def load_markets(self, reload=False):
+        return {}
+
+
+class ZeroRisk(RiskModel):
+    id = "test_zero_risk"
+    label = "Zero risk"
+
+    def position_units(
+        self, equity, risk_pct, risk_per_unit, entry, cash_buffer, min_notional
+    ):
+        return 0.0
+
+
+class CountingExecution(DefaultExecution):
+    id = "test_counting_execution"
+    label = "Counting execution"
+
+    def __init__(self):
+        self.fills = 0
+
+    def fill(self, raw, side, slippage, entering):
+        self.fills += 1
+        return super().fill(raw, side, slippage, entering)
+
+
 class AlwaysLongCheck(Check):
     id = "test_always_long"
 
@@ -108,6 +152,8 @@ INDICATORS.register(TestOscillator)
 LEVEL_MODES.register(HalfLevels)
 TARGET_MODES.register(OnePercentTarget)
 CHECKS.register(AlwaysLongCheck)
+RISK_MODELS.register(ZeroRisk())
+EXECUTION_MODELS.register(CountingExecution())
 
 
 def test_indicator_plugin_is_discovered():
@@ -180,6 +226,65 @@ def test_dca_target_mode_plugin_is_used():
     assert _target_price(
         100.0, 110.0, 0.0, "test_one_percent", 0.1, 0.382, 3.0
     ) == 101.0
+
+
+def test_exchange_adapter_plugin_is_used():
+    created = []
+
+    def factory(**kwargs):
+        adapter = FakeExchangeAdapter(**kwargs)
+        created.append(adapter)
+        return adapter
+
+    EXCHANGES.register(
+        ExchangePlugin(
+            id="test_exchange",
+            label="Test exchange",
+            description="In-memory adapter",
+            factory=factory,
+        )
+    )
+    first = get_adapter(market_type="spot", exchange_id="test_exchange")
+    second = get_adapter(market_type="spot", exchange_id="test_exchange")
+    assert first is second
+    assert len(created) == 1
+    assert first.market_type == "spot"
+    assert set(EXCHANGES.ids()) >= {"binance", "test_exchange"}
+
+
+def test_risk_model_plugin_is_used():
+    result = run_backtest(
+        df=_df(1500),
+        days=30,
+        use_mtf=False,
+        risk_model="test_zero_risk",
+    )
+    assert result["risk_model"] == "test_zero_risk"
+    assert result["metrics"]["trades"] == 0
+    assert set(RISK_MODELS.ids()) >= {"percent", "test_zero_risk"}
+
+
+def test_execution_model_plugin_is_used():
+    result = run_backtest(
+        df=_df(1500),
+        days=60,
+        use_mtf=False,
+        execution_model="test_counting_execution",
+    )
+    model = EXECUTION_MODELS.get("test_counting_execution")
+    assert result["execution_model"] == "test_counting_execution"
+    assert model.fills > 0
+    assert set(EXECUTION_MODELS.ids()) >= {"default", "test_counting_execution"}
+
+
+def test_backtest_rejects_unknown_models():
+    for kwargs in ({"risk_model": "missing"}, {"execution_model": "missing"}):
+        try:
+            run_backtest(df=_df(), days=5, use_mtf=False, **kwargs)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{kwargs} should raise")
 
 
 def test_strategy_plugins_are_registered():

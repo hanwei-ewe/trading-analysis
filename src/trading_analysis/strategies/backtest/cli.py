@@ -33,6 +33,10 @@ def main(argv=None):
                         help="spot mode: no shorts, cash-only notional")
     parser.add_argument("--risk-pct", type=float, default=None,
                         help="risk per trade in percent of equity")
+    parser.add_argument("--risk-model", default="percent",
+                        help="registered risk model id")
+    parser.add_argument("--execution-model", default="default",
+                        help="registered execution model id")
     parser.add_argument("--cash-buffer", type=float, default=0.02)
     parser.add_argument("--min-notional", type=float, default=5.0)
     parser.add_argument("--start", default=None)
@@ -60,6 +64,8 @@ def main(argv=None):
         target_r=args.target_r,
         long_only=args.long_only,
         risk_pct=args.risk_pct,
+        risk_model=args.risk_model,
+        execution_model=args.execution_model,
         cash_buffer=args.cash_buffer,
         min_notional=args.min_notional,
         window_start=args.start,

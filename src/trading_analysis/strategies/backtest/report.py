@@ -31,6 +31,8 @@ def to_markdown(result):
         else "- Direction: long and short",
         f"- Risk: {result.get('risk_pct', 0):.1f}% per trade, "
         f"{result.get('cash_buffer', 0) * 100:.1f}% cash buffer",
+        f"- Models: {result.get('risk_model', 'percent')} risk, "
+        f"{result.get('execution_model', 'default')} execution",
         f"- Entry: {'limit at zone mid' if result.get('entry_mode') == 'limit' else 'market at next open'}"
         + (
             f" (valid {result['limit_bars']} bars)"

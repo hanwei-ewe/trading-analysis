@@ -22,7 +22,10 @@ END = pd.Timestamp("2026-10-20", tz="UTC")
 
 def main():
     cfg = load_config()
-    adapter = get_adapter(cfg["exchange"]["market_type"])
+    adapter = get_adapter(
+        market_type=cfg["exchange"]["market_type"],
+        exchange_id=cfg["exchange"].get("id", "binance"),
+    )
     rows = []
     for symbol in ("ETH/USDT", "BTC/USDT"):
         df = load_history(

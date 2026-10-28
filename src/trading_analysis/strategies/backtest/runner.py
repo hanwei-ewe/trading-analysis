@@ -6,8 +6,10 @@ from ...config import load_config
 from ...data import get_adapter, load_history, parse_timeframe
 from .checks import DEFAULT_CHECKS, _merge_overrides, _warmup_bars
 from .engine import _run_engine
+from .execution import get_execution_model
 from .features import _evaluate_frame, _htf_check_map, _prep, _regime_map
 from .metrics import _buy_hold, _metrics
+from .risk import get_risk_model
 
 
 def run_backtest(
@@ -37,6 +39,8 @@ def run_backtest(
     adapter=None,
     df=None,
     htf_dfs=None,
+    risk_model="percent",
+    execution_model="default",
 ):
     if float(stop_mult) <= 0:
         raise ValueError("stop_mult must be > 0")
@@ -48,6 +52,8 @@ def run_backtest(
         raise ValueError("cash_buffer must be in [0, 1)")
     if float(min_notional) < 0:
         raise ValueError("min_notional must be >= 0")
+    get_risk_model(risk_model)
+    get_execution_model(execution_model)
     cfg = load_config(config_path)
     if indicator_overrides:
         if not isinstance(indicator_overrides, dict):
@@ -61,7 +67,10 @@ def run_backtest(
     cache_dir = cfg["paths"]["cache"]
 
     if df is None:
-        adapter = adapter or get_adapter(cfg["exchange"]["market_type"])
+        adapter = adapter or get_adapter(
+            market_type=cfg["exchange"]["market_type"],
+            exchange_id=cfg["exchange"].get("id", "binance"),
+        )
         extra_days = warm * step / 86400.0 + 2.0
         df = load_history(
             adapter, pair, tf, days + extra_days, cache_dir=cache_dir, use_cache=use_cache
@@ -147,6 +156,8 @@ def run_backtest(
         cash_buffer=cash_buffer,
         min_notional=min_notional,
         window_end=window_end,
+        risk_model=risk_model,
+        execution_model=execution_model,
     )
     start_idx = engine["start_index"]
     metrics = _metrics(
@@ -175,6 +186,8 @@ def run_backtest(
         ),
         "cash_buffer": float(cash_buffer),
         "min_notional": float(min_notional),
+        "risk_model": risk_model,
+        "execution_model": execution_model,
         "indicator_overrides": indicator_overrides or {},
         "metrics": metrics,
         "trades": engine["trades"],

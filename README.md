@@ -52,7 +52,8 @@ Dependencies live in `.vendor`; `dev.sh` adds `.vendor` and `src` to
 
 ## Configuration — `config.yaml`
 
-- `universe.pair` (ETH/USDT) and `exchange` (Binance spot).
+- `universe.pair` (ETH/USDT) and `exchange` (`id` selects a registered
+  adapter, `market_type` defaults to Binance spot).
 - `timeframes.available` plus primary / context / regime.
 - `indicators`: `ema`, `rsi`, `macd`, `atr`, `bollinger`, `vwap`, `stoch`, `adx`,
   `obv`, `volume_ma`.
@@ -81,9 +82,9 @@ closed bars, market fills at the next bar's open):
 
 Options: `--checks default|all|rsi,macd,...`, `--entry market|limit`,
 `--limit-bars`, `--target proposal|rr`, `--regime-filter none|aligned|loose`,
-`--stop-mult`, `--target-r`, `--no-mtf`, `--days`, `--equity`, `--fee`,
-`--slippage`, `--no-cache`. Walk-forward adds `--train-days`, `--test-days`,
-`--step-days`, `--min-train-trades`, and `--json`.
+`--stop-mult`, `--target-r`, `--risk-model`, `--execution-model`, `--no-mtf`,
+`--days`, `--equity`, `--fee`, `--slippage`, `--no-cache`. Walk-forward adds
+`--train-days`, `--test-days`, `--step-days`, `--min-train-trades`, and `--json`.
 
 Each run writes JSON + Markdown + equity/trade CSVs to `results/` (gitignored)
 and prints the summary. The first 365-day validation is recorded in `PLAN.md`
@@ -178,12 +179,14 @@ tests/                   indicator / engine / strategy / DCA / metrics tests
 
 ## Extension points
 
-Indicators, oscillators, confluence checks, strategies, and DCA modes are
-plugins. Each declares a stable `id`, lives in its own module, and registers
-itself at import time through `trading_analysis.core.Registry`. Adding an
-indicator does not require editing `add_indicators`, warmup calculation, or the
-oscillator chart builder. DCA level/target/reference/allocation/trend modes are
-registered under `strategies/dca/modes/`.
+Indicators, oscillators, confluence checks, strategies, DCA modes, exchange
+adapters, risk models, and execution models are plugins. Each declares a stable
+`id`, lives in its own module, and registers itself at import time through
+`trading_analysis.core.Registry`. Adding an indicator does not require editing
+`add_indicators`, warmup calculation, or the oscillator chart builder. DCA
+level/target/reference/allocation/trend modes are registered under
+`strategies/dca/modes/`; exchange adapters under `data/`; risk and execution
+models under `strategies/backtest/`.
 
 See `DESIGN.md` §6.1 for the contracts and registration pattern.
 

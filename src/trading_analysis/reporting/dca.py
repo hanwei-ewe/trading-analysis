@@ -100,7 +100,10 @@ def run_dca_report(
         raise ValueError("levels and allocations must have the same length")
 
     if df is None:
-        adapter = adapter or get_adapter(cfg["exchange"]["market_type"])
+        adapter = adapter or get_adapter(
+            market_type=cfg["exchange"]["market_type"],
+            exchange_id=cfg["exchange"].get("id", "binance"),
+        )
         df = load_history(
             adapter,
             pair,

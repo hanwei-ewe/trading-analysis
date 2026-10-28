@@ -85,7 +85,10 @@ DCA_CONFIGS = {
 
 def main():
     cfg = load_config()
-    adapter = get_adapter(cfg["exchange"]["market_type"])
+    adapter = get_adapter(
+        market_type=cfg["exchange"]["market_type"],
+        exchange_id=cfg["exchange"].get("id", "binance"),
+    )
     cache = cfg["paths"]["cache"]
 
     def load(symbol):

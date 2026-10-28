@@ -1,6 +1,6 @@
 # DESIGN.md — Trading Analysis Agent
 
-_Architecture, method, and conventions. Version 2.9 — 2026-10-24._
+_Architecture, method, and conventions. Version 3.0 — 2026-10-28._
 _Companion to RULES.md (constraints) and PLAN.md (roadmap)._
 
 ## 1. Broker & Data Source
@@ -9,8 +9,9 @@ _Companion to RULES.md (constraints) and PLAN.md (roadmap)._
 - **Region:** Singapore — spot market data only; some derivatives are geo-restricted.
 - **Market data:** Binance **public** REST + WebSocket. No API key required for analysis.
 - **Private endpoints:** not used while at Level 0 (see RULES.md §2).
-- **Abstraction:** all exchange access goes through one adapter module (CCXT-based)
-  so the broker can be swapped without touching strategy/indicator code.
+- **Abstraction:** all exchange access goes through the `EXCHANGES` adapter
+  registry (CCXT-backed Binance by default), so the broker can be swapped
+  without touching strategy/indicator code.
 - **Local data cache:** OHLCV is persisted to `data/cache/{SYMBOL}_{tf}.csv` and
   refreshed **incrementally** (`since` = last cached candle + one step, with a
   bounded catch-up loop for long downtime). On restart the service re-reads the
@@ -194,13 +195,13 @@ Packaging & running (canonical: Docker):
 │       ├── config.py
 │       ├── core/            # generic plugin registry + protocol
 │       ├── indicators/      # one module per indicator/oscillator plugin
-│       ├── data/            # exchange adapter, cache, timeframe helpers
+│       ├── data/            # exchange adapter registry, cache, timeframe helpers
 │       ├── analysis/        # levels + confluence engine
 │       │   └── checks/      # one module per confluence-check plugin
 │       ├── strategies/
 │       │   ├── base.py      # Strategy interface + registry
 │       │   ├── builtin.py   # registered trend + DCA strategies
-│       │   ├── backtest/    # checks, features, engine, metrics, runner, report, CLI
+│       │   ├── backtest/    # checks, features, risk/execution models, engine, metrics, runner, report, CLI
 │       │   ├── dca/         # levels, engine, report
 │       │   │   └── modes/   # registered level/target/reference/allocation/trend plugins
 │       │   ├── walkforward.py
@@ -223,8 +224,8 @@ Packaging & running (canonical: Docker):
 ### 6.1 Plugin Architecture
 
 Shared extension points use `trading_analysis.core.Registry`. A plugin declares
-a stable `id` and is registered with a decorator, so adding a feature does not
-require editing a central `if/elif` chain.
+a stable `id` and registers at import time, so adding a feature does not require
+editing a central `if/elif` chain.
 
 - **Indicators/oscillators:** subclass `indicators.base.Indicator`, implement
   `compute(frame, params)`, and optionally `warmup(params)` and
@@ -239,6 +240,16 @@ require editing a central `if/elif` chain.
 - **DCA modes:** subclass the relevant mode base (`LevelMode`, `TargetMode`,
   `ReferenceMode`, `AllocationMode`, `TrendFilter`) and register with its
   registry. The DCA loop resolves modes by id and never branches on mode names.
+- **Exchange adapters:** implement `data.base.ExchangeAdapter` and register an
+  `ExchangePlugin` factory in `EXCHANGES`; `get_adapter(..., exchange_id=...)`
+  resolves the configured adapter and caches clients by exchange and options.
+- **Risk models:** subclass `strategies.backtest.risk.RiskModel`, implement
+  `position_units(...)`, and register in `RISK_MODELS`. The default `percent`
+  model preserves percent-risk sizing with the notional/cash-buffer caps.
+- **Execution models:** subclass `strategies.backtest.execution.ExecutionModel`,
+  implement `fill`, `limit_fill`, and `exit_check`, and register in
+  `EXECUTION_MODELS`. The default model preserves next-open fills, slippage,
+  intrabar limits, and stop-first exit ordering.
 
 Keep each plugin in its own module and import it from the package `__init__` so
 registration happens once at import time. A plugin should depend on the shared
@@ -277,7 +288,7 @@ Robustness protocol:
 - Parameter-sensitivity checks; reject strategies that only work at one setting.
 
 Implementation notes (first slice):
-- `data.load_history()` pages Binance OHLCV into a dedicated `*_history.csv`
+- `data.load_history()` pages exchange OHLCV into a dedicated `*_history.csv`
   cache and fetches extra warmup bars so EMA200/ADX are valid at the window
   start.
 - `backtest.py` precomputes causal indicators and confirms swing pivots only
@@ -305,7 +316,10 @@ Implementation notes (first slice):
   minimum trade count, then scores that combo on the next unseen window. Trades
   are assigned by entry time; the report also shows fixed 1x/2R and 2x/3R
   baselines over the same test windows.
-- Sizing: `max_risk_pct` of current equity per trade, notional capped at equity.
+- Sizing: `max_risk_pct` of current equity per trade, notional capped at equity;
+  selectable via `--risk-model` (default `percent`).
+- Execution: selectable via `--execution-model` (default `default`), covering
+  fills, limit fills, and stop-first exit ordering.
 - Costs: taker fee + slippage on both legs (configurable on the CLI).
 - Outputs: `results/backtest_*` JSON + Markdown + equity/trade CSVs.
 - CLI: `python -m trading_analysis.strategies.backtest --timeframe 1h --days 365`
