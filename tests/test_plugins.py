@@ -10,7 +10,7 @@ from trading_analysis.analysis import CHECKS, Check, CheckResult, analyze
 from trading_analysis.app.pipeline import _compute_oscillators
 from trading_analysis.config import load_config
 from trading_analysis.data import EXCHANGES, ExchangePlugin, get_adapter
-from trading_analysis.strategies import STRATEGIES
+from trading_analysis.strategies import STRATEGIES, Strategy, run_strategy
 from trading_analysis.strategies.backtest import (
     EXECUTION_MODELS,
     RISK_MODELS,
@@ -99,6 +99,14 @@ class OnePercentTarget(TargetMode):
         return fill * 1.01
 
 
+class FrameLengthStrategy(Strategy):
+    id = "test_frame_length"
+    label = "Frame length"
+
+    def run(self, frame=None, **params):
+        return {"rows": len(frame), "params": params}
+
+
 class FakeExchangeAdapter:
     def __init__(self, market_type="spot", **_):
         self.market_type = market_type
@@ -152,6 +160,7 @@ INDICATORS.register(TestOscillator)
 LEVEL_MODES.register(HalfLevels)
 TARGET_MODES.register(OnePercentTarget)
 CHECKS.register(AlwaysLongCheck)
+STRATEGIES.register(FrameLengthStrategy)
 RISK_MODELS.register(ZeroRisk())
 EXECUTION_MODELS.register(CountingExecution())
 
@@ -288,7 +297,18 @@ def test_backtest_rejects_unknown_models():
 
 
 def test_strategy_plugins_are_registered():
-    assert set(STRATEGIES.ids()) == {"trend", "dca"}
+    assert set(STRATEGIES.ids()) >= {"trend", "dca", "test_frame_length"}
+
+
+def test_strategy_registry_dispatch():
+    result = run_strategy("test_frame_length", _df(), limit=5)
+    assert result == {"rows": 260, "params": {"limit": 5}}
+    try:
+        run_strategy("missing", _df())
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("unknown strategy should raise")
 
 
 def test_check_plugin_is_discovered():

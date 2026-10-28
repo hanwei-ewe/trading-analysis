@@ -52,6 +52,7 @@ Milestones:
 - [x] Registry-backed confluence checks (`analysis.checks.Check`); `ALL_CHECKS`
       is derived from the registry.
 - [x] `strategies/base.py`: pluggable `Strategy` interface and registry.
+- [x] `run_strategy` dispatcher; trend CLI and DCA report resolve strategies by id.
 - [ ] Add more price overlays (SMA/WMA/Keltner/Donchian/Ichimoku) on the plugin
       contract without touching the chart core.
 - [x] `risk.py`: percent-risk sizing behind `RiskModel`/`RISK_MODELS`, decoupled

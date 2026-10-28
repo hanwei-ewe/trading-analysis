@@ -35,7 +35,7 @@ Commands executed for this report:
 
 Results:
 
-- Test suite: **62/62 passed**.
+- Test suite: **74/74 passed**.
 - Canonical blend study: rewrote `results/study_blend_dca_trend.csv` in
   **314.6s**.
 - 15m frequency study: wrote `results/study_15m_sr.csv` for ETH and BTC over

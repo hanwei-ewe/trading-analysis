@@ -235,8 +235,10 @@ editing a central `if/elif` chain.
 - **Confluence checks:** subclass `analysis.checks.base.Check`, implement
   `evaluate(ctx) -> CheckResult | None`, and register with `@CHECKS.register`.
   The check automatically appears in `ALL_CHECKS` and can be selected by id.
-- **Strategies:** subclass `strategies.base.Strategy`, implement `run(frame,
-  **params)`, and register with `@STRATEGIES.register`.
+- **Strategies:** subclass `strategies.base.Strategy`, implement
+  `run(frame=None, **params)`, and register with `@STRATEGIES.register`. Callers
+  dispatch by id through `strategies.runner.run_strategy`; the trend CLI and
+  DCA report use it.
 - **DCA modes:** subclass the relevant mode base (`LevelMode`, `TargetMode`,
   `ReferenceMode`, `AllocationMode`, `TrendFilter`) and register with its
   registry. The DCA loop resolves modes by id and never branches on mode names.
@@ -260,7 +262,8 @@ context/contracts, not on another plugin's private internals.
 - **Interface:** `strategies.base.Strategy` exposes `run(frame, **params)` and
   returns a result dictionary. Signal construction remains in `analysis/`; the
   strategy orchestrates data, checks, and its engine.
-- **Pluggable:** strategies register in `STRATEGIES` and are selected by id.
+- **Pluggable:** strategies register in `STRATEGIES` and are selected by id via
+  `run_strategy(strategy_id, frame=None, **params)`.
 - **Pure:** strategies are deterministic functions of their input data — no I/O,
   no state that can't be reconstructed from the data window.
 - Strategies may compose shared indicator plugins but must not embed execution

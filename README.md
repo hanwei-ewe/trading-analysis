@@ -159,6 +159,7 @@ src/trading_analysis/
   strategies/
     base.py              Strategy interface + registry
     builtin.py           registered trend + DCA strategies
+    runner.py            run_strategy(id, frame, **params) dispatcher
     backtest/            checks, features, engine, metrics, runner, report, CLI
     dca/                 DCA levels, engine, report
       modes/             registered level/target/reference/allocation/trend plugins
@@ -186,7 +187,8 @@ adapters, risk models, and execution models are plugins. Each declares a stable
 `add_indicators`, warmup calculation, or the oscillator chart builder. DCA
 level/target/reference/allocation/trend modes are registered under
 `strategies/dca/modes/`; exchange adapters under `data/`; risk and execution
-models under `strategies/backtest/`.
+models under `strategies/backtest/`. Strategies are dispatched by id through
+`trading_analysis.strategies.run_strategy`.
 
 See `DESIGN.md` §6.1 for the contracts and registration pattern.
 

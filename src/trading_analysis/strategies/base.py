@@ -9,7 +9,7 @@ class Strategy(ABC):
     description: str = ""
 
     @abstractmethod
-    def run(self, frame, **params):
+    def run(self, frame=None, **params):
         raise NotImplementedError
 
 

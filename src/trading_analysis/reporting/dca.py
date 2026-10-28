@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 
 from ..config import load_config, resolve_path
 from ..data import get_adapter, load_history
-from ..strategies.dca import FIB_LEVELS, run_dca
+from ..strategies.dca import FIB_LEVELS
+from ..strategies.runner import run_strategy
 from .serialization import json_ready
 
 ALLOCATION_PRESETS = {
@@ -113,8 +114,9 @@ def run_dca_report(
             use_cache=True,
         )
 
-    result = run_dca(
-        df,
+    result = run_strategy(
+        "dca",
+        df=df,
         initial_capital=float(initial_capital),
         levels=parsed_levels,
         allocations=resolved_allocations,

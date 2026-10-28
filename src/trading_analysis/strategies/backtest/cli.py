@@ -1,9 +1,9 @@
 import argparse
 import json
 
+from ..runner import run_strategy
 from .checks import _parse_checks
 from .report import save_results, to_markdown
-from .runner import run_backtest
 
 
 def main(argv=None):
@@ -45,7 +45,8 @@ def main(argv=None):
                         help="JSON config overrides, e.g. '{\"indicators\":{\"rsi\":7}}'")
     args = parser.parse_args(argv)
 
-    result = run_backtest(
+    result = run_strategy(
+        "trend",
         config_path=args.config,
         timeframe=args.timeframe,
         symbol=args.symbol,
