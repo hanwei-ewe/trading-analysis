@@ -1,10 +1,15 @@
-import math
-
 import numpy as np
 import pandas as pd
 
 from ... import indicators as ind_mod
-from .levels import FIB_LEVELS, _resolve_levels, _target_price, _trend_leg, _validate
+from .levels import _resolve_levels, _target_price, _trend_leg, _validate
+from .modes import (
+    get_allocation_mode,
+    get_level_mode,
+    get_reference_mode,
+    get_target_mode,
+    get_trend_filter,
+)
 
 
 def run_dca(
@@ -32,16 +37,11 @@ def run_dca(
     min_notional=5.0,
     include_curve=False,
 ):
-    if level_mode not in ("fixed", "fib", "trend_fib", "atr", "geometric"):
-        raise ValueError("level_mode must be fixed, fib, trend_fib, atr, or geometric")
-    if target_mode not in ("percent", "retrace", "atr"):
-        raise ValueError("target_mode must be percent, retrace, or atr")
-    if reference_mode not in ("anchor", "rolling", "ath"):
-        raise ValueError("reference_mode must be anchor, rolling, or ath")
-    if allocation_mode not in ("equity", "fixed"):
-        raise ValueError("allocation_mode must be equity or fixed")
-    if trend_filter not in ("none", "ema200"):
-        raise ValueError("trend_filter must be none or ema200")
+    level_mode_obj = get_level_mode(level_mode)
+    target_mode_obj = get_target_mode(target_mode)
+    reference_mode_obj = get_reference_mode(reference_mode)
+    allocation_mode_obj = get_allocation_mode(allocation_mode)
+    trend_filter_obj = get_trend_filter(trend_filter)
     if not 0 <= float(reinvest_pct) <= 1:
         raise ValueError("reinvest_pct must be in [0, 1]")
     if float(profit_target) <= 0:
@@ -73,17 +73,13 @@ def run_dca(
     close = frame["close"].astype(float)
 
     lookback = int(reference_lookback)
-    if reference_mode == "anchor":
-        anchor = float(high.iloc[:lookback].max())
-        refs = pd.Series(anchor, index=frame.index)
-    elif reference_mode == "rolling":
-        refs = high.shift(1).rolling(lookback).max()
-    else:
-        refs = high.shift(1).cummax()
+    refs = reference_mode_obj.series(high, lookback)
 
     atr_series = ind_mod.atr(high, low, close, int(atr_period))
     ema_series = (
-        ind_mod.ema(close, int(ema_period)) if trend_filter == "ema200" else None
+        ind_mod.ema(close, int(ema_period))
+        if trend_filter_obj.requires_ema
+        else None
     )
 
     cash = float(initial_capital)
@@ -111,10 +107,7 @@ def run_dca(
             if ema_series is not None and i > 0
             else float("nan")
         )
-        trend_ok = (
-            trend_filter == "none"
-            or (math.isfinite(prev_ema) and prev_close > prev_ema)
-        )
+        trend_ok = trend_filter_obj.allows(prev_close, prev_ema)
 
         sold_levels = set()
         remaining = []
@@ -150,26 +143,14 @@ def run_dca(
                 armed[lot["level_index"]] = True
         lots = remaining
 
-        level_prices = None
-        target_ref = ref
-        if level_mode == "trend_fib":
-            leg = _trend_leg(
-                high.to_numpy(), low.to_numpy(), i, int(swing_lookback)
-            )
-            if leg is not None:
-                leg_high, leg_low = leg
-                if leg_high > leg_low:
-                    target_ref = leg_high
-                    level_prices = [
-                        leg_high - level * (leg_high - leg_low)
-                        for level in levels
-                    ]
-        elif math.isfinite(ref) and ref > 0:
-            if level_mode == "atr":
-                if math.isfinite(atr) and atr > 0:
-                    level_prices = [ref - level * atr for level in levels]
-            else:
-                level_prices = [ref * (1.0 - level) for level in levels]
+        leg = (
+            _trend_leg(high.to_numpy(), low.to_numpy(), i, int(swing_lookback))
+            if level_mode == "trend_fib"
+            else None
+        )
+        level_prices, target_ref = level_mode_obj.prices(
+            levels, ref, atr, leg
+        )
         if level_prices is not None and any(price <= 0 for price in level_prices):
             level_prices = None
 
@@ -192,10 +173,9 @@ def run_dca(
                 fill = min(o, level_price) * (1.0 + slippage)
                 market_value = sum(lot["units"] * o for lot in lots)
                 trading_equity = cash + market_value
-                if allocation_mode == "fixed":
-                    desired = initial_capital * allocations[j]
-                else:
-                    desired = trading_equity * allocations[j]
+                desired = allocation_mode_obj.desired(
+                    trading_equity, initial_capital, allocations[j]
+                )
                 budget = min(desired, cash)
                 if budget < min_notional:
                     continue
@@ -207,7 +187,7 @@ def run_dca(
                     fill,
                     target_ref,
                     atr,
-                    target_mode,
+                    target_mode_obj.id,
                     profit_target,
                     target_retrace,
                     target_atr,

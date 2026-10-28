@@ -10,6 +10,16 @@ from trading_analysis.analysis import CHECKS, Check, CheckResult, analyze
 from trading_analysis.app.pipeline import _compute_oscillators
 from trading_analysis.config import load_config
 from trading_analysis.strategies import STRATEGIES
+from trading_analysis.strategies.dca import (
+    ALLOCATION_MODES,
+    LEVEL_MODES,
+    REFERENCE_MODES,
+    TARGET_MODES,
+    TREND_FILTERS,
+    run_dca,
+)
+from trading_analysis.strategies.dca.levels import _target_price
+from trading_analysis.strategies.dca.modes import LevelMode, TargetMode
 from trading_analysis.indicators import (
     ChartSpec,
     INDICATORS,
@@ -65,6 +75,22 @@ class TestOscillator(Indicator):
         )
 
 
+class HalfLevels(LevelMode):
+    id = "test_half_levels"
+    label = "Half level"
+
+    def default_levels(self, n_levels, level_base):
+        return (0.5,)
+
+
+class OnePercentTarget(TargetMode):
+    id = "test_one_percent"
+    label = "One percent target"
+
+    def price(self, fill, reference, atr, profit_target, target_retrace, target_atr):
+        return fill * 1.01
+
+
 class AlwaysLongCheck(Check):
     id = "test_always_long"
 
@@ -79,6 +105,8 @@ class AlwaysLongCheck(Check):
 
 INDICATORS.register(MidpointIndicator)
 INDICATORS.register(TestOscillator)
+LEVEL_MODES.register(HalfLevels)
+TARGET_MODES.register(OnePercentTarget)
 CHECKS.register(AlwaysLongCheck)
 
 
@@ -109,6 +137,49 @@ def test_oscillator_plugin_builds_chart_payload():
     assert "test_oscillator" in out
     assert out["test_oscillator"]["levels"] == [0.0]
     assert out["test_oscillator"]["fixed_range"] == [-1.0, 1.0]
+
+
+def _dca_df(n=420):
+    idx = pd.date_range("2024-01-01", periods=n, freq="4h", tz="UTC")
+    close = np.full(n, 100.0)
+    close[180:260] = np.linspace(100.0, 50.0, 80)
+    close[260:] = np.linspace(50.0, 120.0, n - 260)
+    return pd.DataFrame(
+        {
+            "open": close,
+            "high": close + 0.5,
+            "low": close - 0.5,
+            "close": close,
+            "volume": np.full(n, 1000.0),
+        },
+        index=idx,
+    )
+
+
+def test_dca_mode_registries_are_populated():
+    assert set(LEVEL_MODES.ids()) >= {"fixed", "fib", "trend_fib", "atr", "geometric"}
+    assert set(TARGET_MODES.ids()) >= {"percent", "retrace", "atr"}
+    assert set(REFERENCE_MODES.ids()) >= {"anchor", "rolling", "ath"}
+    assert set(ALLOCATION_MODES.ids()) >= {"equity", "fixed"}
+    assert set(TREND_FILTERS.ids()) >= {"none", "ema200"}
+
+
+def test_dca_level_mode_plugin_is_used():
+    result = run_dca(
+        _dca_df(),
+        level_mode="test_half_levels",
+        allocations=(1.0,),
+        reference_lookback=180,
+        profit_target=0.1,
+    )
+    assert result["levels"] == [0.5]
+    assert result["buys"] > 0
+
+
+def test_dca_target_mode_plugin_is_used():
+    assert _target_price(
+        100.0, 110.0, 0.0, "test_one_percent", 0.1, 0.382, 3.0
+    ) == 101.0
 
 
 def test_strategy_plugins_are_registered():

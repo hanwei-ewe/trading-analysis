@@ -69,6 +69,8 @@ Milestones:
       levels, allocation presets, anchor/rolling/ATH references,
       percent/retrace/ATR targets, EMA200 filter, reserve/reinvestment,
       optional curve.
+- [x] DCA mode registries: level, target, reference, allocation, and trend
+      filter plugins under `strategies/dca/modes/`.
 - [x] 15m frequency study: trend and DCA variants tested with costs; rejected
       (ETH trend -70.22%, BTC trend -83.25%).
 - [x] Support/resistance audit: swing pivots, PA, Donchian breakout, EMA

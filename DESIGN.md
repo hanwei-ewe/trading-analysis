@@ -202,6 +202,7 @@ Packaging & running (canonical: Docker):
 │       │   ├── builtin.py   # registered trend + DCA strategies
 │       │   ├── backtest/    # checks, features, engine, metrics, runner, report, CLI
 │       │   ├── dca/         # levels, engine, report
+│       │   │   └── modes/   # registered level/target/reference/allocation/trend plugins
 │       │   ├── walkforward.py
 │       │   └── sweep.py
 │       ├── analytics/       # shared metrics + curve blending
@@ -235,6 +236,9 @@ require editing a central `if/elif` chain.
   The check automatically appears in `ALL_CHECKS` and can be selected by id.
 - **Strategies:** subclass `strategies.base.Strategy`, implement `run(frame,
   **params)`, and register with `@STRATEGIES.register`.
+- **DCA modes:** subclass the relevant mode base (`LevelMode`, `TargetMode`,
+  `ReferenceMode`, `AllocationMode`, `TrendFilter`) and register with its
+  registry. The DCA loop resolves modes by id and never branches on mode names.
 
 Keep each plugin in its own module and import it from the package `__init__` so
 registration happens once at import time. A plugin should depend on the shared
@@ -552,6 +556,9 @@ A separate research view, not part of the live signal path.
   same-bar look-ahead.
 - **Targets:** fixed percent, retrace of the reference, or ATR multiple.
 - **Filter:** optional EMA200; entries only when price is above it.
+- **Modes:** level, target, reference, allocation, and trend-filter modes are
+  registered plugins under `strategies/dca/modes/`. Each declares a stable `id`
+  and implements a small strategy method; new modes do not edit the DCA loop.
 - **Allocations:** equal, front/back-loaded, deep/very-deep, Fibonacci,
   inverse, martingale/anti-martingale, or custom normalized weights.
 - **Accounting:** fees 0.10% + slippage 0.05% on entries/exits; unspent cash is

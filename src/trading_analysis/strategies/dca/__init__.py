@@ -9,6 +9,13 @@ from .levels import (
     _trend_leg,
     _validate,
 )
+from .modes import (
+    ALLOCATION_MODES,
+    LEVEL_MODES,
+    REFERENCE_MODES,
+    TARGET_MODES,
+    TREND_FILTERS,
+)
 
 __all__ = [
     "run_dca",
@@ -20,4 +27,9 @@ __all__ = [
     "_target_price",
     "_trend_leg",
     "_validate",
+    "ALLOCATION_MODES",
+    "LEVEL_MODES",
+    "REFERENCE_MODES",
+    "TARGET_MODES",
+    "TREND_FILTERS",
 ]

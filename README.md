@@ -160,6 +160,7 @@ src/trading_analysis/
     builtin.py           registered trend + DCA strategies
     backtest/            checks, features, engine, metrics, runner, report, CLI
     dca/                 DCA levels, engine, report
+      modes/             registered level/target/reference/allocation/trend plugins
     walkforward.py       walk-forward validation
     sweep.py             parallel parameter sweeps
   analytics/             shared performance metrics + curve blending
@@ -177,11 +178,12 @@ tests/                   indicator / engine / strategy / DCA / metrics tests
 
 ## Extension points
 
-Indicators, oscillators, confluence checks, and strategies are plugins. Each
-declares a stable `id`, lives in its own module, and registers itself at import
-time through `trading_analysis.core.Registry`. Adding an indicator does not
-require editing `add_indicators`, warmup calculation, or the oscillator chart
-builder.
+Indicators, oscillators, confluence checks, strategies, and DCA modes are
+plugins. Each declares a stable `id`, lives in its own module, and registers
+itself at import time through `trading_analysis.core.Registry`. Adding an
+indicator does not require editing `add_indicators`, warmup calculation, or the
+oscillator chart builder. DCA level/target/reference/allocation/trend modes are
+registered under `strategies/dca/modes/`.
 
 See `DESIGN.md` §6.1 for the contracts and registration pattern.
 
